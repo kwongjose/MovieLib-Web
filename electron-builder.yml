@@ -4,11 +4,14 @@ directories:
   buildResources: build
   output: release
 
-# better-sqlite3 v13 ships prebuilt N-API binaries that already work across
-# Electron versions without a rebuild (confirmed - see Phase 4 commit); the
-# rebuild step needs Visual Studio Build Tools this machine doesn't have,
-# and would be unnecessary work even where it is available.
-npmRebuild: false
+# For Windows 7 support we're pinned to Electron 22 (last version with
+# Win7/8/8.1 support - Chromium dropped it in the version after) and
+# better-sqlite3 8.x (pre-N-API; the newer N-API-based major targets a
+# Node-API version newer than Electron 22's bundled Node 16 supports).
+# better-sqlite3 8.x needs npmRebuild so electron-builder fetches its
+# prebuilt binary matching Electron 22's ABI (110) - no local compiler
+# needed, since WiseLibs publishes that exact prebuild.
+npmRebuild: true
 
 files:
   - out/**/*
@@ -20,8 +23,14 @@ asarUnpack:
   - '**/node_modules/better-sqlite3/**'
   - '**/node_modules/ffprobe-static/**'
 
+# Building both architectures since the Win7 target machine's bitness isn't
+# known - an ia32 build also runs fine on 64-bit Windows.
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
   icon: build/icon.ico
 
 nsis:
