@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
+import { registerAllIpc } from './ipc'
 
 const isDev = !app.isPackaged
 
@@ -49,6 +50,7 @@ if (!gotSingleInstanceLock) {
   })
 
   app.whenReady().then(() => {
+    registerAllIpc()
     createWindow()
 
     app.on('activate', () => {
