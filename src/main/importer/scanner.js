@@ -5,7 +5,7 @@ import { existingPaths, createMovie } from '../db/movies.repo'
 import { listFolders } from '../db/folders.repo'
 import { getSettings } from '../db/settings.repo'
 import { parseFilename } from './parseFilename'
-import { fetchByTitle, fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from './omdbClient'
+import { fetchByTitle, fetchByImdbId, OmdbRateLimitError, OmdbAuthError, OmdbNetworkError } from './omdbClient'
 import { probeResolution } from './probeVideo'
 
 const CONCURRENCY = 4
@@ -95,7 +95,7 @@ export async function runScan(onProgress) {
   let processed = 0
   let imported = 0
   let skipped = 0
-  let stopReason = null // 'rate-limit' | 'invalid-key' | null
+  let stopReason = null // 'rate-limit' | 'invalid-key' | 'network' | null
   let buffer = []
 
   const flushBuffer = db.transaction((movies) => {
@@ -135,6 +135,8 @@ export async function runScan(onProgress) {
           stopReason = 'rate-limit'
         } else if (error instanceof OmdbAuthError) {
           stopReason = 'invalid-key'
+        } else if (error instanceof OmdbNetworkError) {
+          stopReason = 'network'
         } else {
           skipped += 1
         }

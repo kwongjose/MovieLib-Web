@@ -10,6 +10,7 @@ function createWindow() {
     height: 800,
     show: false,
     autoHideMenuBar: true,
+    icon: join(__dirname, '../../build/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

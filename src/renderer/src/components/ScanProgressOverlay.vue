@@ -38,6 +38,9 @@ const percent = computed(() => {
       <span v-else-if="scanStore.result.stopReason === 'invalid-key'" class="scan-result__warning">
         Stopped early - the OMDb API key in Settings is invalid.
       </span>
+      <span v-else-if="scanStore.result.stopReason === 'network'" class="scan-result__warning">
+        Stopped early - could not reach OMDb. Check your internet connection.
+      </span>
     </p>
     <button class="scan-result__dismiss" @click="scanStore.dismiss">Dismiss</button>
   </div>

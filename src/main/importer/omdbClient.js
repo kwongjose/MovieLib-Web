@@ -3,6 +3,7 @@ const OMDB_BASE_URL = 'https://www.omdbapi.com/'
 export class OmdbNotFoundError extends Error {}
 export class OmdbRateLimitError extends Error {}
 export class OmdbAuthError extends Error {}
+export class OmdbNetworkError extends Error {}
 
 function parseRating(value) {
   const num = parseFloat(value)
@@ -41,7 +42,16 @@ function mapOmdbResponse(data) {
 
 async function callOmdb(apiKey, params) {
   const query = new URLSearchParams({ ...params, plot: 'full', r: 'json', apikey: apiKey })
-  const response = await fetch(`${OMDB_BASE_URL}?${query.toString()}`)
+
+  let response
+  try {
+    response = await fetch(`${OMDB_BASE_URL}?${query.toString()}`)
+  } catch {
+    // DNS failure, no connection, etc. - every remaining lookup would fail
+    // identically, so this gets the same "stop the scan" treatment as
+    // rate-limit/invalid-key rather than being skipped file-by-file.
+    throw new OmdbNetworkError('Could not reach OMDb - check your internet connection.')
+  }
 
   // OMDb returns HTTP 401 (not 200) for an invalid key, still with a JSON
   // body - so the body must be inspected before falling back to a generic
