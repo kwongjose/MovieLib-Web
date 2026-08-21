@@ -2,16 +2,35 @@
 import { onMounted, computed } from 'vue'
 import { useMoviesStore } from '../stores/movies'
 import { useGenresStore } from '../stores/genres'
+import { useFoldersStore } from '../stores/folders'
+import { useSettingsStore } from '../stores/settings'
+import { useScanStore } from '../stores/scan'
 import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
 import MovieTable from '../components/MovieTable.vue'
 
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
+const foldersStore = useFoldersStore()
+const settingsStore = useSettingsStore()
+const scanStore = useScanStore()
 
 onMounted(async () => {
   await genresStore.fetch()
+  await foldersStore.fetch()
+  await settingsStore.fetch()
   await moviesStore.fetch()
 })
+
+const scanDisabledReason = computed(() => {
+  if (!settingsStore.omdbApiKey) return 'Set an OMDb API key in Settings first.'
+  if (!foldersStore.folders.length) return 'Add a library folder in Settings first.'
+  return ''
+})
+
+async function onScanClick() {
+  await scanStore.start()
+  await moviesStore.fetch()
+}
 
 const genreOptions = computed(() => genresStore.genres.map((g) => ({ value: g.id, label: g.name })))
 
@@ -66,6 +85,14 @@ function onSelectMovie() {
         @update:model-value="moviesStore.setRatingBuckets"
       />
       <button class="library-view__clear" @click="moviesStore.clearFilters">Show All</button>
+      <button
+        class="library-view__scan"
+        :disabled="scanStore.scanning || !!scanDisabledReason"
+        :title="scanDisabledReason"
+        @click="onScanClick"
+      >
+        {{ scanStore.scanning ? 'Scanning…' : 'Scan for New Movies' }}
+      </button>
     </div>
 
     <p v-if="moviesStore.loading" class="library-view__status">Loading…</p>
@@ -122,6 +149,26 @@ function onSelectMovie() {
 .library-view__clear:hover {
   color: #e7e9ee;
   background: #2d2f37;
+}
+
+.library-view__scan {
+  margin-left: auto;
+  background: #3a3d47;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.library-view__scan:hover:not(:disabled) {
+  background: #454854;
+}
+
+.library-view__scan:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .library-view__status {

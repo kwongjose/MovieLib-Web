@@ -7,7 +7,9 @@ const api = {
     list: (filters) => ipcRenderer.invoke('movies:list', filters),
     getById: (id) => ipcRenderer.invoke('movies:getById', id),
     create: (payload) => ipcRenderer.invoke('movies:create', payload),
+    createFromImdbId: (imdbId, path) => ipcRenderer.invoke('movies:createFromImdbId', imdbId, path),
     update: (id, payload) => ipcRenderer.invoke('movies:update', id, payload),
+    refetchFromOmdb: (id, imdbId) => ipcRenderer.invoke('movies:refetchFromOmdb', id, imdbId),
     delete: (id, options) => ipcRenderer.invoke('movies:delete', id, options),
     addActor: (movieId, name) => ipcRenderer.invoke('movies:addActor', movieId, name),
     removeActor: (movieId, actorId) => ipcRenderer.invoke('movies:removeActor', movieId, actorId),
@@ -16,7 +18,6 @@ const api = {
     findDuplicates: () => ipcRenderer.invoke('movies:findDuplicates'),
     cleanupMissingFiles: () => ipcRenderer.invoke('movies:cleanupMissingFiles'),
     resetLibrary: () => ipcRenderer.invoke('movies:resetLibrary')
-    // createFromImdbId / refetchFromOmdb added in Phase 4
   },
   genres: {
     list: () => ipcRenderer.invoke('genres:list'),
@@ -37,6 +38,15 @@ const api = {
     add: () => ipcRenderer.invoke('folders:add'),
     remove: (id) => ipcRenderer.invoke('folders:remove', id)
   },
+  scan: {
+    start: () => ipcRenderer.invoke('scan:start'),
+    findNotImported: () => ipcRenderer.invoke('scan:findNotImported'),
+    onProgress: (callback) => {
+      const listener = (_event, data) => callback(data)
+      ipcRenderer.on('scan:progress', listener)
+      return () => ipcRenderer.removeListener('scan:progress', listener)
+    }
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (payload) => ipcRenderer.invoke('settings:set', payload)
@@ -51,7 +61,6 @@ const api = {
   dev: {
     seedFakeMovies: () => ipcRenderer.invoke('dev:seedFakeMovies')
   }
-  // scan.* added in Phase 4
 }
 
 if (process.contextIsolated) {

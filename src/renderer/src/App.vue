@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import LibraryView from './views/LibraryView.vue'
 import SettingsView from './views/SettingsView.vue'
+import ScanProgressOverlay from './components/ScanProgressOverlay.vue'
 
 const views = [
   { id: 'library', label: 'Library' },
@@ -32,6 +33,7 @@ const currentView = ref('library')
       <p v-else-if="currentView === 'maintenance'">Maintenance view - built out in Phase 6.</p>
       <SettingsView v-else-if="currentView === 'settings'" />
     </main>
+    <ScanProgressOverlay />
   </div>
 </template>
 

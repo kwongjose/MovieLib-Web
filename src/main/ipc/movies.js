@@ -2,6 +2,15 @@ import { ipcMain } from 'electron'
 import { existsSync, unlinkSync } from 'node:fs'
 import { getDb } from '../db'
 import * as moviesRepo from '../db/movies.repo'
+import { getSettings } from '../db/settings.repo'
+import { fetchByImdbId } from '../importer/omdbClient'
+import { probeResolution } from '../importer/probeVideo'
+
+function requireApiKey(db) {
+  const { omdbApiKey } = getSettings(db)
+  if (!omdbApiKey) throw new Error('Set an OMDb API key in Settings first.')
+  return omdbApiKey
+}
 
 function cleanupMissingFiles() {
   const db = getDb()
@@ -20,8 +29,22 @@ export function registerMoviesIpc() {
   ipcMain.handle('movies:create', (_e, payload) => moviesRepo.createMovie(getDb(), payload))
   ipcMain.handle('movies:update', (_e, id, payload) => moviesRepo.updateMovie(getDb(), id, payload))
 
-  // movies:createFromImdbId and movies:refetchFromOmdb are registered in Phase 4
-  // once importer/omdbClient.js exists to actually call OMDb.
+  ipcMain.handle('movies:createFromImdbId', async (_e, imdbId, path) => {
+    const db = getDb()
+    const apiKey = requireApiKey(db)
+    const omdbData = await fetchByImdbId(apiKey, imdbId)
+    const resolution = await probeResolution(path)
+    return moviesRepo.createMovie(db, { ...omdbData, ...resolution, path })
+  })
+
+  // Refetches OMDb-sourced fields only - width/height/resolution_label/path
+  // are left untouched (see movies.repo.js updateOmdbFields).
+  ipcMain.handle('movies:refetchFromOmdb', async (_e, id, imdbId) => {
+    const db = getDb()
+    const apiKey = requireApiKey(db)
+    const omdbData = await fetchByImdbId(apiKey, imdbId)
+    return moviesRepo.updateOmdbFields(db, id, omdbData)
+  })
 
   ipcMain.handle('movies:delete', (_e, id, options = {}) => {
     const db = getDb()

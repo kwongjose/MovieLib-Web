@@ -1,3 +1,4 @@
+import { normalize } from 'node:path'
 import { listActorsForMovie, actorNamesForMovie, addActorToMovieByName, unlinkActorFromMovie } from './actors.repo'
 import { listGenresForMovie, setGenresForMovie } from './genres.repo'
 import { listCollectionsForMovie } from './collections.repo'
@@ -138,7 +139,17 @@ const MOVIE_COLUMNS = [
   'poster_url'
 ]
 
-export function createMovie(db, payload) {
+// Paths can arrive with forward or back slashes depending on entry point
+// (manual add vs. scanner discovery via path.join, which is always
+// OS-native) - normalize so the UNIQUE constraint and dedup-by-path checks
+// (existingPaths) can't be fooled by two spellings of the same file.
+function normalizePayloadPath(payload) {
+  if (payload.path === undefined) return payload
+  return { ...payload, path: normalize(payload.path) }
+}
+
+export function createMovie(db, rawPayload) {
+  const payload = normalizePayloadPath(rawPayload)
   const columns = MOVIE_COLUMNS.filter((col) => payload[col] !== undefined)
   const placeholders = columns.map(() => '?').join(', ')
   const values = columns.map((col) => payload[col] ?? null)
@@ -157,7 +168,8 @@ export function createMovie(db, payload) {
   return getMovieById(db, movieId)
 }
 
-export function updateMovie(db, id, payload) {
+export function updateMovie(db, id, rawPayload) {
+  const payload = normalizePayloadPath(rawPayload)
   const columns = MOVIE_COLUMNS.filter((col) => payload[col] !== undefined)
   if (columns.length) {
     const setClause = columns.map((col) => `${col} = ?`).join(', ')
