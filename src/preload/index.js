@@ -45,6 +45,11 @@ const api = {
     openFile: (path) => ipcRenderer.invoke('system:openFile', path),
     openContainingFolder: (path) => ipcRenderer.invoke('system:openContainingFolder', path),
     revealDatabaseFile: () => ipcRenderer.invoke('system:revealDatabaseFile')
+  },
+  // Dev-only channel; the main process only registers a handler for it in
+  // unpackaged builds, and the renderer only surfaces it behind import.meta.env.DEV.
+  dev: {
+    seedFakeMovies: () => ipcRenderer.invoke('dev:seedFakeMovies')
   }
   // scan.* added in Phase 4
 }

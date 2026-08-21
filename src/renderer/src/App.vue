@@ -1,5 +1,7 @@
 <script setup>
 import { ref } from 'vue'
+import LibraryView from './views/LibraryView.vue'
+import SettingsView from './views/SettingsView.vue'
 
 const views = [
   { id: 'library', label: 'Library' },
@@ -25,10 +27,10 @@ const currentView = ref('library')
       </button>
     </nav>
     <main class="app-content">
-      <p v-if="currentView === 'library'">Library view - built out in Phase 3.</p>
+      <LibraryView v-if="currentView === 'library'" />
       <p v-else-if="currentView === 'collections'">Collections view - built out in Phase 6.</p>
       <p v-else-if="currentView === 'maintenance'">Maintenance view - built out in Phase 6.</p>
-      <p v-else-if="currentView === 'settings'">Settings view - built out in Phase 3.</p>
+      <SettingsView v-else-if="currentView === 'settings'" />
     </main>
   </div>
 </template>
