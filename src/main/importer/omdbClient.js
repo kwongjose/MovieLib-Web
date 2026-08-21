@@ -1,4 +1,32 @@
+import { net } from 'electron'
+
 const OMDB_BASE_URL = 'https://www.omdbapi.com/'
+
+// Uses Electron's net.request rather than global fetch: fetch only became
+// available by default in Node 18, and Electron 22 (pinned for Windows 7
+// support) bundles Node 16.17, where it's undefined - and net.fetch didn't
+// exist yet in Electron 22 either. net.request also routes through
+// Chromium's network stack instead of Node's, which means it picks up
+// system proxy settings automatically and does TLS via BoringSSL rather
+// than the host OS - a real advantage on Windows 7, whose own TLS stack
+// is long unpatched.
+function requestJson(url) {
+  return new Promise((resolve, reject) => {
+    const request = net.request(url)
+
+    request.on('response', (response) => {
+      const chunks = []
+      response.on('data', (chunk) => chunks.push(chunk))
+      response.on('end', () => {
+        resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') })
+      })
+      response.on('error', reject)
+    })
+
+    request.on('error', reject)
+    request.end()
+  })
+}
 
 export class OmdbNotFoundError extends Error {}
 export class OmdbRateLimitError extends Error {}
@@ -45,12 +73,16 @@ async function callOmdb(apiKey, params) {
 
   let response
   try {
-    response = await fetch(`${OMDB_BASE_URL}?${query.toString()}`)
-  } catch {
+    response = await requestJson(`${OMDB_BASE_URL}?${query.toString()}`)
+  } catch (error) {
     // DNS failure, no connection, etc. - every remaining lookup would fail
     // identically, so this gets the same "stop the scan" treatment as
     // rate-limit/invalid-key rather than being skipped file-by-file.
-    throw new OmdbNetworkError('Could not reach OMDb - check your internet connection.')
+    // The underlying message is preserved deliberately: an earlier version
+    // swallowed it entirely and reported every failure as a connectivity
+    // problem, which hid a "fetch is not defined" bug behind a wrong
+    // diagnosis. Never report a cause you haven't actually established.
+    throw new OmdbNetworkError(`Could not reach OMDb (${error.message})`)
   }
 
   // OMDb returns HTTP 401 (not 200) for an invalid key, still with a JSON
@@ -59,7 +91,7 @@ async function callOmdb(apiKey, params) {
   // failure and never get its own (scan-halting) handling below.
   let data
   try {
-    data = await response.json()
+    data = JSON.parse(response.body)
   } catch {
     throw new Error(`OMDb request failed: HTTP ${response.status}`)
   }
