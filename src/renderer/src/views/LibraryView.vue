@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useMoviesStore } from '../stores/movies'
 import { useGenresStore } from '../stores/genres'
 import { useFoldersStore } from '../stores/folders'
@@ -7,6 +7,8 @@ import { useSettingsStore } from '../stores/settings'
 import { useScanStore } from '../stores/scan'
 import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
 import MovieTable from '../components/MovieTable.vue'
+import MovieDetailDialog from '../components/MovieDetailDialog.vue'
+import MovieFormDialog from '../components/MovieFormDialog.vue'
 
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
@@ -52,8 +54,42 @@ function onSearchInput(event) {
   moviesStore.setSearch(event.target.value)
 }
 
-function onSelectMovie() {
-  // Detail dialog lands in Phase 5.
+const selectedMovieId = ref(null)
+const formMode = ref(null) // null | 'add' | 'edit'
+const formMovieId = ref(null)
+
+function onSelectMovie(movie) {
+  selectedMovieId.value = movie.id
+}
+
+function closeDetail() {
+  selectedMovieId.value = null
+}
+
+function openAddForm() {
+  formMode.value = 'add'
+  formMovieId.value = null
+}
+
+function openEditForm(id) {
+  formMode.value = 'edit'
+  formMovieId.value = id
+  selectedMovieId.value = null
+}
+
+function closeForm() {
+  formMode.value = null
+  formMovieId.value = null
+}
+
+async function onFormSaved() {
+  closeForm()
+  await moviesStore.fetch()
+}
+
+async function onMovieDeleted() {
+  selectedMovieId.value = null
+  await moviesStore.fetch()
 }
 </script>
 
@@ -85,6 +121,7 @@ function onSelectMovie() {
         @update:model-value="moviesStore.setRatingBuckets"
       />
       <button class="library-view__clear" @click="moviesStore.clearFilters">Show All</button>
+      <button class="library-view__add" @click="openAddForm">+ Add Movie</button>
       <button
         class="library-view__scan"
         :disabled="scanStore.scanning || !!scanDisabledReason"
@@ -106,6 +143,21 @@ function onSelectMovie() {
       :sort-dir="moviesStore.filters.sortDir"
       @sort="moviesStore.toggleSort"
       @select="onSelectMovie"
+    />
+
+    <MovieDetailDialog
+      v-if="selectedMovieId"
+      :movie-id="selectedMovieId"
+      @close="closeDetail"
+      @edit="openEditForm"
+      @deleted="onMovieDeleted"
+    />
+    <MovieFormDialog
+      v-if="formMode"
+      :mode="formMode"
+      :movie-id="formMovieId"
+      @close="closeForm"
+      @saved="onFormSaved"
     />
   </div>
 </template>
@@ -151,8 +203,22 @@ function onSelectMovie() {
   background: #2d2f37;
 }
 
-.library-view__scan {
+.library-view__add {
   margin-left: auto;
+  background: #3a3d47;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.library-view__add:hover {
+  background: #454854;
+}
+
+.library-view__scan {
   background: #3a3d47;
   color: #ffffff;
   border: none;
