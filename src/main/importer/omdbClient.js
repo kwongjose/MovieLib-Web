@@ -93,7 +93,7 @@ async function callOmdb(apiKey, params) {
   try {
     data = JSON.parse(response.body)
   } catch {
-    throw new Error(`OMDb request failed: HTTP ${response.status}`)
+    throw new Error(`OMDb returned a non-JSON body (HTTP ${response.status})`)
   }
 
   if (data.Response === 'False') {
@@ -106,7 +106,11 @@ async function callOmdb(apiKey, params) {
     throw new OmdbNotFoundError(data.Error || 'Not found')
   }
 
-  if (!response.ok) {
+  // Status check by explicit range: requestJson returns a plain
+  // { status, body } object, not a fetch Response, so there is no `.ok`
+  // here - reading one silently yields undefined and fails every healthy
+  // response.
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(`OMDb request failed: HTTP ${response.status}`)
   }
 

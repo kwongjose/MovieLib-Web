@@ -5,7 +5,14 @@ import { existingPaths, createMovie } from '../db/movies.repo'
 import { listFolders } from '../db/folders.repo'
 import { getSettings } from '../db/settings.repo'
 import { parseFilename } from './parseFilename'
-import { fetchByTitle, fetchByImdbId, OmdbRateLimitError, OmdbAuthError, OmdbNetworkError } from './omdbClient'
+import {
+  fetchByTitle,
+  fetchByImdbId,
+  OmdbRateLimitError,
+  OmdbAuthError,
+  OmdbNetworkError,
+  OmdbNotFoundError
+} from './omdbClient'
 import { probeResolution } from './probeVideo'
 
 const CONCURRENCY = 4
@@ -78,6 +85,25 @@ export async function findNewFiles() {
   return discovered.filter((path) => !already.has(path))
 }
 
+// A year taken from the filename that disagrees with OMDb's (release vs.
+// production year, a re-release, or simply a wrong year in the name) turns
+// an otherwise-findable film into a miss, since OMDb treats `y` as an exact
+// filter. Retry on the title alone before giving up. This goes beyond the
+// original app, which had no such fallback; the extra request only happens
+// for a file that has already failed.
+async function lookupMovie(apiKey, parsed) {
+  if (parsed.imdbId) return fetchByImdbId(apiKey, parsed.imdbId)
+
+  try {
+    return await fetchByTitle(apiKey, parsed.title, parsed.year)
+  } catch (error) {
+    if (parsed.year && error instanceof OmdbNotFoundError) {
+      return fetchByTitle(apiKey, parsed.title, null)
+    }
+    throw error
+  }
+}
+
 // Always partitions new-vs-already-imported by path BEFORE doing any
 // OMDb/ffprobe work (see the plan's "Note on scan modes") - there is no
 // separate "full" vs "incremental" mode because of that.
@@ -118,9 +144,7 @@ export async function runScan(onProgress) {
       const parsed = parseFilename(filePath)
 
       try {
-        const omdbData = parsed.imdbId
-          ? await fetchByImdbId(omdbApiKey, parsed.imdbId)
-          : await fetchByTitle(omdbApiKey, parsed.title, parsed.year)
+        const omdbData = await lookupMovie(omdbApiKey, parsed)
 
         const resolution = await probeResolution(filePath)
 
@@ -138,6 +162,10 @@ export async function runScan(onProgress) {
         } else if (error instanceof OmdbNetworkError) {
           stopReason = 'network'
         } else {
+          // Always say why a file was skipped. A silent counter here once hid
+          // a bug where every healthy OMDb response was being rejected, and
+          // "N skipped" looked indistinguishable from genuine no-match files.
+          console.warn(`[scan] skipped ${filePath}: ${error.message}`)
           skipped += 1
         }
       } finally {

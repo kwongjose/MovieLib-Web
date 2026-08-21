@@ -10,7 +10,9 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "build:win": "electron-vite build && electron-builder --win"
+    "build:win": "electron-vite build && electron-builder --win",
+    "_comment_rebuild:dev": "build:win rebuilds better-sqlite3 in node_modules per architecture and leaves the last one (ia32) in place, which breaks x64 dev mode with ERR_DLOPEN_FAILED. Run this afterwards to get dev working again.",
+    "rebuild:dev": "electron-rebuild -f -w better-sqlite3 --arch x64"
   },
   "dependencies": {
     "better-sqlite3": "8.7.0",
