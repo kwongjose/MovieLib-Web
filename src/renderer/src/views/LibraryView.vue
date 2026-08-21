@@ -5,21 +5,25 @@ import { useGenresStore } from '../stores/genres'
 import { useFoldersStore } from '../stores/folders'
 import { useSettingsStore } from '../stores/settings'
 import { useScanStore } from '../stores/scan'
+import { useCollectionsStore } from '../stores/collections'
 import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
 import MovieTable from '../components/MovieTable.vue'
 import MovieDetailDialog from '../components/MovieDetailDialog.vue'
 import MovieFormDialog from '../components/MovieFormDialog.vue'
+import GenreManagerPopover from '../components/GenreManagerPopover.vue'
 
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
 const foldersStore = useFoldersStore()
 const settingsStore = useSettingsStore()
 const scanStore = useScanStore()
+const collectionsStore = useCollectionsStore()
 
 onMounted(async () => {
   await genresStore.fetch()
   await foldersStore.fetch()
   await settingsStore.fetch()
+  await collectionsStore.fetch()
   await moviesStore.fetch()
 })
 
@@ -35,6 +39,7 @@ async function onScanClick() {
 }
 
 const genreOptions = computed(() => genresStore.genres.map((g) => ({ value: g.id, label: g.name })))
+const collectionOptions = computed(() => collectionsStore.collections.map((c) => ({ value: c.id, label: c.name })))
 
 const currentDecadeStart = Math.floor(new Date().getFullYear() / 10) * 10
 const decadeOptions = []
@@ -120,7 +125,14 @@ async function onMovieDeleted() {
         :model-value="moviesStore.filters.ratingBuckets"
         @update:model-value="moviesStore.setRatingBuckets"
       />
+      <MultiSelectDropdown
+        label="Collection"
+        :options="collectionOptions"
+        :model-value="moviesStore.filters.collectionIds"
+        @update:model-value="moviesStore.setCollectionIds"
+      />
       <button class="library-view__clear" @click="moviesStore.clearFilters">Show All</button>
+      <GenreManagerPopover />
       <button class="library-view__add" @click="openAddForm">+ Add Movie</button>
       <button
         class="library-view__scan"

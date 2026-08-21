@@ -1,6 +1,8 @@
 <script setup>
 import { ref } from 'vue'
 import LibraryView from './views/LibraryView.vue'
+import CollectionsView from './views/CollectionsView.vue'
+import MaintenanceView from './views/MaintenanceView.vue'
 import SettingsView from './views/SettingsView.vue'
 import ScanProgressOverlay from './components/ScanProgressOverlay.vue'
 
@@ -29,8 +31,8 @@ const currentView = ref('library')
     </nav>
     <main class="app-content">
       <LibraryView v-if="currentView === 'library'" />
-      <p v-else-if="currentView === 'collections'">Collections view - built out in Phase 6.</p>
-      <p v-else-if="currentView === 'maintenance'">Maintenance view - built out in Phase 6.</p>
+      <CollectionsView v-else-if="currentView === 'collections'" />
+      <MaintenanceView v-else-if="currentView === 'maintenance'" />
       <SettingsView v-else-if="currentView === 'settings'" />
     </main>
     <ScanProgressOverlay />

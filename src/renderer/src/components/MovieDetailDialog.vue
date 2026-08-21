@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import CollectionPicker from './CollectionPicker.vue'
 
 const props = defineProps({
   movieId: { type: Number, required: true }
@@ -68,6 +69,11 @@ async function deleteMovie() {
           </p>
           <p class="detail__actors"><strong>Starring:</strong> {{ actorNames }}</p>
           <p class="detail__plot">{{ movie.plot || 'No plot available.' }}</p>
+
+          <div class="detail__collections">
+            <strong>Collections:</strong>
+            <CollectionPicker :movie-id="movie.id" :selected-collections="movie.collections" @changed="load" />
+          </div>
 
           <div class="detail__actions">
             <button @click="watchMovie">Watch Movie</button>
@@ -173,6 +179,15 @@ async function deleteMovie() {
   font-size: 13px;
   color: #c6c8d0;
   line-height: 1.5;
+}
+
+.detail__collections {
+  margin: 0 0 14px;
+  font-size: 13px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .detail__actions {
