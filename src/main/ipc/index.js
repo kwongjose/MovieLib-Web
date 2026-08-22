@@ -1,7 +1,7 @@
 import { registerMoviesIpc } from './movies'
 import { registerGenresIpc } from './genres'
 import { registerCollectionsIpc } from './collections'
-import { registerSettingsIpc } from './settings'
+import { registerOmdbKeysIpc } from './omdbKeys'
 import { registerFoldersIpc } from './folders'
 import { registerSystemIpc } from './system'
 import { registerScanIpc } from './scan'
@@ -11,7 +11,7 @@ export function registerAllIpc() {
   registerMoviesIpc()
   registerGenresIpc()
   registerCollectionsIpc()
-  registerSettingsIpc()
+  registerOmdbKeysIpc()
   registerFoldersIpc()
   registerSystemIpc()
   registerScanIpc()

@@ -1,23 +1,8 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useSettingsStore } from '../stores/settings'
 import WatchFolderList from '../components/WatchFolderList.vue'
+import OmdbKeyList from '../components/OmdbKeyList.vue'
 
-const settingsStore = useSettingsStore()
-const apiKeyInput = ref('')
-const saved = ref(false)
 const isDev = import.meta.env.DEV
-
-onMounted(async () => {
-  await settingsStore.fetch()
-  apiKeyInput.value = settingsStore.omdbApiKey ?? ''
-})
-
-async function saveApiKey() {
-  await settingsStore.save(apiKeyInput.value.trim() || null)
-  saved.value = true
-  setTimeout(() => (saved.value = false), 2000)
-}
 
 async function revealDatabaseFile() {
   await window.api.system.revealDatabaseFile()
@@ -31,20 +16,13 @@ async function seedFakeMovies() {
 <template>
   <div class="settings-view">
     <section class="settings-view__section">
-      <h2>OMDb API Key</h2>
+      <h2>OMDb API Keys</h2>
       <p class="settings-view__hint">
-        Get a free key at omdbapi.com. Required for scanning folders and importing movies.
+        Get a free key at omdbapi.com. At least one is required for scanning and IMDb lookups.
+        Add several and they're used in the order shown - when one hits its daily limit
+        (1000 lookups on the free tier) the next takes over automatically.
       </p>
-      <div class="settings-view__row">
-        <input
-          v-model="apiKeyInput"
-          type="text"
-          placeholder="Enter your OMDb API key"
-          class="settings-view__input"
-        />
-        <button class="settings-view__save" @click="saveApiKey">Save</button>
-        <span v-if="saved" class="settings-view__saved">Saved.</span>
-      </div>
+      <OmdbKeyList />
     </section>
 
     <section class="settings-view__section">

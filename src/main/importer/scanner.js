@@ -3,7 +3,8 @@ import { join, extname } from 'node:path'
 import { getDb } from '../db'
 import { existingPaths, createMovie } from '../db/movies.repo'
 import { listFolders } from '../db/folders.repo'
-import { getSettings } from '../db/settings.repo'
+import { listKeyValues } from '../db/omdbKeys.repo'
+import { createKeyPool } from './keyPool'
 import { parseFilename } from './parseFilename'
 import {
   fetchByTitle,
@@ -104,13 +105,42 @@ async function lookupMovie(apiKey, parsed) {
   }
 }
 
+// Runs a lookup against the pool, moving to the next key when one reports
+// its daily limit and retrying the same file. The limit only ends the scan
+// once every key is spent.
+async function lookupWithPool(pool, parsed, failures) {
+  for (;;) {
+    const key = pool.current()
+    if (!key) throw new KeysUnavailableError()
+
+    // A key that is out of quota and a key that is rejected outright are
+    // both unusable for the rest of the run, and neither should strand the
+    // remaining keys - a single typo in one entry would otherwise halt a
+    // scan that the other keys could finish.
+    try {
+      return await lookupMovie(key, parsed)
+    } catch (error) {
+      const isRateLimit = error instanceof OmdbRateLimitError
+      const isInvalid = error instanceof OmdbAuthError
+      if (!isRateLimit && !isInvalid) throw error
+
+      if (!failures.has(key)) failures.set(key, isRateLimit ? 'rate-limit' : 'invalid')
+      if (!pool.markExhausted(key)) throw new KeysUnavailableError()
+      // another key is available - same file, next key
+    }
+  }
+}
+
+export class KeysUnavailableError extends Error {}
+
 // Always partitions new-vs-already-imported by path BEFORE doing any
 // OMDb/ffprobe work (see the plan's "Note on scan modes") - there is no
 // separate "full" vs "incremental" mode because of that.
 export async function runScan(onProgress) {
   const db = getDb()
-  const { omdbApiKey } = getSettings(db)
-  if (!omdbApiKey) throw new Error('Set an OMDb API key in Settings before scanning.')
+  const keys = listKeyValues(db)
+  if (!keys.length) throw new Error('Add an OMDb API key in Settings before scanning.')
+  const pool = createKeyPool(keys)
 
   const folders = listFolders(db)
   if (!folders.length) throw new Error('Add at least one library folder in Settings before scanning.')
@@ -121,7 +151,8 @@ export async function runScan(onProgress) {
   let processed = 0
   let imported = 0
   let skipped = 0
-  let stopReason = null // 'rate-limit' | 'invalid-key' | 'network' | null
+  let stopReason = null // 'keys-unavailable' | 'network' | null
+  const keyFailures = new Map() // key -> 'rate-limit' | 'invalid'
   let buffer = []
 
   const flushBuffer = db.transaction((movies) => {
@@ -144,21 +175,19 @@ export async function runScan(onProgress) {
       const parsed = parseFilename(filePath)
 
       try {
-        const omdbData = await lookupMovie(omdbApiKey, parsed)
+        const omdbData = await lookupWithPool(pool, parsed, keyFailures)
 
         const resolution = await probeResolution(filePath)
 
         buffer.push({ ...omdbData, ...resolution, path: filePath })
         if (buffer.length >= CONCURRENCY) flush()
       } catch (error) {
-        // Rate-limit and invalid-key both mean every remaining file would
-        // fail identically - stop cleanly instead of marking each as
-        // "skipped" one by one, which would misleadingly look like a wave
-        // of not-found titles rather than one root cause.
-        if (error instanceof OmdbRateLimitError) {
-          stopReason = 'rate-limit'
-        } else if (error instanceof OmdbAuthError) {
-          stopReason = 'invalid-key'
+        // Once no usable key remains, every remaining file would fail
+        // identically - stop cleanly instead of marking each as "skipped"
+        // one by one, which would look like a wave of not-found titles
+        // rather than one root cause.
+        if (error instanceof KeysUnavailableError) {
+          stopReason = 'keys-unavailable'
         } else if (error instanceof OmdbNetworkError) {
           stopReason = 'network'
         } else {
@@ -178,5 +207,14 @@ export async function runScan(onProgress) {
   await Promise.all(tasks)
   flush()
 
-  return { total, imported, skipped, stopReason }
+  const failureReasons = [...keyFailures.values()]
+  return {
+    total,
+    imported,
+    skipped,
+    stopReason,
+    keysTotal: pool.total(),
+    keysRateLimited: failureReasons.filter((r) => r === 'rate-limit').length,
+    keysInvalid: failureReasons.filter((r) => r === 'invalid').length
+  }
 }

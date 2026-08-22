@@ -48,9 +48,10 @@ const api = {
       return () => ipcRenderer.removeListener('scan:progress', listener)
     }
   },
-  settings: {
-    get: () => ipcRenderer.invoke('settings:get'),
-    set: (payload) => ipcRenderer.invoke('settings:set', payload)
+  omdbKeys: {
+    list: () => ipcRenderer.invoke('omdbKeys:list'),
+    add: (key) => ipcRenderer.invoke('omdbKeys:add', key),
+    remove: (id) => ipcRenderer.invoke('omdbKeys:remove', id)
   },
   system: {
     openFile: (path) => ipcRenderer.invoke('system:openFile', path),

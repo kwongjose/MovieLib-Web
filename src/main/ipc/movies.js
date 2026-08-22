@@ -2,14 +2,26 @@ import { ipcMain } from 'electron'
 import { existsSync, unlinkSync } from 'node:fs'
 import { getDb } from '../db'
 import * as moviesRepo from '../db/movies.repo'
-import { getSettings } from '../db/settings.repo'
-import { fetchByImdbId } from '../importer/omdbClient'
+import { listKeyValues } from '../db/omdbKeys.repo'
+import { fetchByImdbId, OmdbRateLimitError } from '../importer/omdbClient'
 import { probeResolution } from '../importer/probeVideo'
 
-function requireApiKey(db) {
-  const { omdbApiKey } = getSettings(db)
-  if (!omdbApiKey) throw new Error('Set an OMDb API key in Settings first.')
-  return omdbApiKey
+// Single-movie lookups walk the same key list as a scan, so one exhausted
+// key doesn't block adding a film by hand.
+async function withAnyKey(db, run) {
+  const keys = listKeyValues(db)
+  if (!keys.length) throw new Error('Add an OMDb API key in Settings first.')
+
+  let lastRateLimit = null
+  for (const key of keys) {
+    try {
+      return await run(key)
+    } catch (error) {
+      if (!(error instanceof OmdbRateLimitError)) throw error
+      lastRateLimit = error
+    }
+  }
+  throw lastRateLimit ?? new Error('All OMDb keys have reached their daily limit.')
 }
 
 function cleanupMissingFiles() {
@@ -31,8 +43,7 @@ export function registerMoviesIpc() {
 
   ipcMain.handle('movies:createFromImdbId', async (_e, imdbId, path) => {
     const db = getDb()
-    const apiKey = requireApiKey(db)
-    const omdbData = await fetchByImdbId(apiKey, imdbId)
+    const omdbData = await withAnyKey(db, (key) => fetchByImdbId(key, imdbId))
     const resolution = await probeResolution(path)
     return moviesRepo.createMovie(db, { ...omdbData, ...resolution, path })
   })
@@ -41,8 +52,7 @@ export function registerMoviesIpc() {
   // are left untouched (see movies.repo.js updateOmdbFields).
   ipcMain.handle('movies:refetchFromOmdb', async (_e, id, imdbId) => {
     const db = getDb()
-    const apiKey = requireApiKey(db)
-    const omdbData = await fetchByImdbId(apiKey, imdbId)
+    const omdbData = await withAnyKey(db, (key) => fetchByImdbId(key, imdbId))
     return moviesRepo.updateOmdbFields(db, id, omdbData)
   })
 

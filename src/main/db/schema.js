@@ -92,6 +92,14 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- Several OMDb keys can be held at once; the importer moves to the next when
+-- one hits its daily limit. Ordered by id, so the list is used top-down.
+CREATE TABLE IF NOT EXISTS omdb_keys (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  key        TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS watch_folders (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   path       TEXT NOT NULL UNIQUE,
@@ -114,7 +122,21 @@ CREATE VIRTUAL TABLE IF NOT EXISTS movies_fts USING fts5(
 export function applySchema(db) {
   db.exec(CREATE_STATEMENTS)
   seedGenres(db)
+  migrateSingleApiKey(db)
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION)
+}
+
+// The API key used to be a single settings row. Carry any existing one into
+// the new table so upgrading doesn't silently lose it and leave scanning
+// broken with no obvious cause.
+function migrateSingleApiKey(db) {
+  const existingCount = db.prepare('SELECT COUNT(*) AS c FROM omdb_keys').get().c
+  if (existingCount > 0) return
+
+  const legacy = db.prepare("SELECT value FROM settings WHERE key = 'omdb_api_key'").get()
+  if (legacy?.value) {
+    db.prepare('INSERT OR IGNORE INTO omdb_keys (key) VALUES (?)').run(legacy.value.trim())
+  }
 }
 
 function seedGenres(db) {

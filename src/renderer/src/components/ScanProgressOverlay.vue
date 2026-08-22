@@ -4,6 +4,25 @@ import { useScanStore } from '../stores/scan'
 
 const scanStore = useScanStore()
 
+function describeKeyFailures(result) {
+  const parts = []
+  if (result.keysRateLimited) parts.push(`${result.keysRateLimited} out of quota`)
+  if (result.keysInvalid) parts.push(`${result.keysInvalid} invalid`)
+  return parts.join(', ')
+}
+
+const keyFailureSummary = computed(() => describeKeyFailures(scanStore.result ?? {}))
+
+// A scan that finished but burned through keys on the way is still worth
+// flagging - those keys won't be there for the next run.
+const keyFailoverNote = computed(() => {
+  const result = scanStore.result
+  if (!result) return ''
+  const summary = describeKeyFailures(result)
+  if (!summary) return ''
+  return `Switched keys during the scan (${summary} of ${result.keysTotal}).`
+})
+
 const percent = computed(() => {
   const p = scanStore.progress
   if (!p || !p.total) return 0
@@ -32,15 +51,14 @@ const percent = computed(() => {
     <p v-else class="scan-result__summary">
       Imported {{ scanStore.result.imported }} of {{ scanStore.result.total }} new file(s).
       <span v-if="scanStore.result.skipped">{{ scanStore.result.skipped }} skipped (not found on OMDb).</span>
-      <span v-if="scanStore.result.stopReason === 'rate-limit'" class="scan-result__warning">
-        Stopped early - OMDb daily rate limit reached.
-      </span>
-      <span v-else-if="scanStore.result.stopReason === 'invalid-key'" class="scan-result__warning">
-        Stopped early - the OMDb API key in Settings is invalid.
+      <span v-if="scanStore.result.stopReason === 'keys-unavailable'" class="scan-result__warning">
+        Stopped early - no usable OMDb keys left ({{ keyFailureSummary }}). Run again tomorrow,
+        or add another key in Settings.
       </span>
       <span v-else-if="scanStore.result.stopReason === 'network'" class="scan-result__warning">
         Stopped early - could not reach OMDb. Check your internet connection.
       </span>
+      <span v-else-if="keyFailoverNote" class="scan-result__note">{{ keyFailoverNote }}</span>
     </p>
     <button class="scan-result__dismiss" @click="scanStore.dismiss">Dismiss</button>
   </div>
@@ -127,6 +145,12 @@ const percent = computed(() => {
 .scan-result__warning {
   display: block;
   color: #e0c48a;
+  margin-top: 4px;
+}
+
+.scan-result__note {
+  display: block;
+  color: #a6a9b4;
   margin-top: 4px;
 }
 

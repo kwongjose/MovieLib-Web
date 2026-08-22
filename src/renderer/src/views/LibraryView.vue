@@ -3,7 +3,7 @@ import { onMounted, computed, ref } from 'vue'
 import { useMoviesStore } from '../stores/movies'
 import { useGenresStore } from '../stores/genres'
 import { useFoldersStore } from '../stores/folders'
-import { useSettingsStore } from '../stores/settings'
+import { useOmdbKeysStore } from '../stores/omdbKeys'
 import { useScanStore } from '../stores/scan'
 import { useCollectionsStore } from '../stores/collections'
 import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
@@ -15,21 +15,21 @@ import CompareDialog from '../components/CompareDialog.vue'
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
 const foldersStore = useFoldersStore()
-const settingsStore = useSettingsStore()
+const keysStore = useOmdbKeysStore()
 const scanStore = useScanStore()
 const collectionsStore = useCollectionsStore()
 
 onMounted(async () => {
   await genresStore.fetch()
   await foldersStore.fetch()
-  await settingsStore.fetch()
+  await keysStore.fetch()
   await collectionsStore.fetch()
   await moviesStore.fetchRatedOptions()
   await moviesStore.fetch()
 })
 
 const scanDisabledReason = computed(() => {
-  if (!settingsStore.omdbApiKey) return 'Set an OMDb API key in Settings first.'
+  if (!keysStore.keys.length) return 'Add an OMDb API key in Settings first.'
   if (!foldersStore.folders.length) return 'Add a library folder in Settings first.'
   return ''
 })
