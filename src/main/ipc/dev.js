@@ -7,6 +7,7 @@ import { createMovie, resetLibrary } from '../db/movies.repo'
 const FAKE_MOVIES = [
   {
     title: 'The Great Escape',
+    rated: 'PG',
     year: '1963',
     imdb_rating: 8.2,
     runtime_minutes: 172,
@@ -20,6 +21,7 @@ const FAKE_MOVIES = [
   },
   {
     title: 'Galaxy Raiders',
+    rated: 'PG-13',
     year: '1999',
     imdb_rating: 6.4,
     runtime_minutes: 118,
@@ -33,6 +35,7 @@ const FAKE_MOVIES = [
   },
   {
     title: 'Laugh Track',
+    rated: 'G',
     year: '2005',
     imdb_rating: 5.8,
     runtime_minutes: 95,
@@ -46,6 +49,7 @@ const FAKE_MOVIES = [
   },
   {
     title: 'Marvel Test: Origins',
+    rated: 'PG-13',
     year: '2012',
     imdb_rating: 7.9,
     runtime_minutes: 130,
@@ -59,6 +63,7 @@ const FAKE_MOVIES = [
   },
   {
     title: 'Midnight Horror House',
+    rated: 'R',
     year: '1988',
     imdb_rating: 6.9,
     runtime_minutes: 88,

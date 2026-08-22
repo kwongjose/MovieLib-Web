@@ -59,7 +59,10 @@ async function deleteMovie() {
         <div class="detail__info">
           <h2 class="detail__title">{{ movie.title }}</h2>
           <p class="detail__meta">
-            {{ movie.year || '—' }} · {{ movie.rated || 'Not Rated' }} ·
+            <span class="detail__rated" :class="{ 'detail__rated--unknown': !movie.rated }">
+              {{ movie.rated || 'Not Rated' }}
+            </span>
+            {{ movie.year || '—' }} · IMDb
             {{ movie.imdb_rating != null ? `${movie.imdb_rating}/10` : '—' }}
           </p>
           <p class="detail__meta">{{ genreNames }}</p>
@@ -167,6 +170,27 @@ async function deleteMovie() {
 
 .detail__meta--watched {
   color: #7ed492;
+}
+
+/* MPAA certificate, boxed so it reads as a classification rather than
+   another number next to the IMDb score. */
+.detail__rated {
+  display: inline-block;
+  border: 1px solid #6c7280;
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-right: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #e7e9ee;
+  vertical-align: 1px;
+}
+
+.detail__rated--unknown {
+  border-color: #44464f;
+  color: #8a8d97;
+  font-weight: 400;
 }
 
 .detail__actors {

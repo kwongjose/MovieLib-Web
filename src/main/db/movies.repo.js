@@ -6,6 +6,7 @@ import { listCollectionsForMovie } from './collections.repo'
 const SORTABLE_COLUMNS = {
   title: 'm.title COLLATE NOCASE',
   year: 'm.year',
+  rated: 'm.rated COLLATE NOCASE',
   imdb_rating: 'm.imdb_rating',
   runtime_minutes: 'm.runtime_minutes',
   resolution: 'm.width * m.height',

@@ -7,11 +7,15 @@ defineProps({
 
 const emit = defineEmits(['sort', 'select'])
 
+// "Rated" is the MPAA certificate (G/PG/R/...); "IMDb" is the 0-10 score.
+// Both were previously called some form of "rating", which made the column
+// header ambiguous once they sit side by side.
 const columns = [
   { key: 'title', label: 'Title' },
   { key: 'year', label: 'Year' },
+  { key: 'rated', label: 'Rated' },
   { key: 'genre_names', label: 'Genre', sortable: false },
-  { key: 'imdb_rating', label: 'Rating' },
+  { key: 'imdb_rating', label: 'IMDb' },
   { key: 'runtime_minutes', label: 'Runtime' },
   { key: 'resolution', label: 'Resolution' },
   { key: 'last_watched_at', label: 'Watched' }
@@ -45,6 +49,7 @@ function onHeaderClick(column) {
       <tr v-for="movie in movies" :key="movie.id">
         <td class="movie-table__title" @click="emit('select', movie)">{{ movie.title }}</td>
         <td>{{ movie.year || '—' }}</td>
+        <td>{{ movie.rated || '—' }}</td>
         <td>{{ movie.genre_names || '—' }}</td>
         <td>{{ movie.imdb_rating ?? '—' }}</td>
         <td>{{ movie.runtime_label || '—' }}</td>
