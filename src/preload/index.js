@@ -9,7 +9,7 @@ const api = {
     create: (payload) => ipcRenderer.invoke('movies:create', payload),
     createFromImdbId: (imdbId, path) => ipcRenderer.invoke('movies:createFromImdbId', imdbId, path),
     update: (id, payload) => ipcRenderer.invoke('movies:update', id, payload),
-    refetchFromOmdb: (id, imdbId) => ipcRenderer.invoke('movies:refetchFromOmdb', id, imdbId),
+    refetchFromTmdb: (id, imdbId) => ipcRenderer.invoke('movies:refetchFromTmdb', id, imdbId),
     delete: (id, options) => ipcRenderer.invoke('movies:delete', id, options),
     addActor: (movieId, name) => ipcRenderer.invoke('movies:addActor', movieId, name),
     removeActor: (movieId, actorId) => ipcRenderer.invoke('movies:removeActor', movieId, actorId),
@@ -56,7 +56,14 @@ const api = {
   system: {
     openFile: (path) => ipcRenderer.invoke('system:openFile', path),
     openContainingFolder: (path) => ipcRenderer.invoke('system:openContainingFolder', path),
-    revealDatabaseFile: () => ipcRenderer.invoke('system:revealDatabaseFile')
+    revealDatabaseFile: () => ipcRenderer.invoke('system:revealDatabaseFile'),
+    getTrailerBase: () => ipcRenderer.invoke('system:getTrailerBase'),
+    openExternal: (url) => ipcRenderer.invoke('system:openExternal', url)
+  },
+  settings: {
+    getTmdbKey: () => ipcRenderer.invoke('settings:getTmdbKey'),
+    setTmdbKey: (key) => ipcRenderer.invoke('settings:setTmdbKey', key),
+    testTmdbKey: (key) => ipcRenderer.invoke('settings:testTmdbKey', key)
   },
   // Dev-only channel; the main process only registers a handler for it in
   // unpackaged builds, and the renderer only surfaces it behind import.meta.env.DEV.

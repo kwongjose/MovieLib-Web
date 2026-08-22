@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { registerAllIpc } from './ipc'
+import { stopTrailerServer } from './trailerServer'
 
 const isDev = !app.isPackaged
 
@@ -58,6 +59,11 @@ if (!gotSingleInstanceLock) {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
   })
+
+  // The trailer server only exists if a trailer was actually played; closing it
+  // on quit keeps the socket from outliving the window on platforms where the
+  // process lingers.
+  app.on('will-quit', stopTrailerServer)
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {

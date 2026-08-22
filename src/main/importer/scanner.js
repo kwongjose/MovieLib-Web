@@ -4,19 +4,24 @@ import { getDb } from '../db'
 import { existingPaths, createMovie } from '../db/movies.repo'
 import { listFolders } from '../db/folders.repo'
 import { listKeyValues } from '../db/omdbKeys.repo'
+import { getTmdbKey } from '../db/settings.repo'
 import { createKeyPool } from './keyPool'
 import { parseFilename } from './parseFilename'
-import {
-  fetchByTitle,
-  fetchByImdbId,
-  OmdbRateLimitError,
-  OmdbAuthError,
-  OmdbNetworkError,
-  OmdbNotFoundError
-} from './omdbClient'
+import { TmdbAuthError, TmdbNetworkError } from './tmdbClient'
+import { fetchTmdbRecord, mergeOmdbFallbacks } from './buildMovie'
+import { fetchByTitle, fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from './omdbClient'
 import { probeResolution } from './probeVideo'
 
-const CONCURRENCY = 4
+// Raised from 4 now that each file costs three HTTP round trips instead of one.
+// Each file still runs its calls serially, so this is at most 5 requests in
+// flight - far inside TMDB's ~40/sec ceiling.
+const CONCURRENCY = 5
+
+// Previously the flush threshold *was* CONCURRENCY, coupling two settings with
+// nothing to do with each other: how many files are in flight, and how many
+// rows are worth one transaction. Separated so either can move independently.
+const FLUSH_BATCH_SIZE = 25
+
 const VIDEO_EXTENSIONS = new Set(['.avi', '.mp4', '.mkv', '.m4v', '.mpg', '.ts'])
 
 // A minimal concurrency-limited task runner, in place of the `p-limit`
@@ -83,121 +88,130 @@ export async function findNewFiles() {
   const folders = listFolders(db)
   const discovered = (await Promise.all(folders.map((f) => discoverVideoFiles(f.path)))).flat()
   const already = existingPaths(db)
-  return discovered.filter((path) => !already.has(path))
+  // Deduplicated because saving both "D:/Movies" and "D:/Movies/Action" yields
+  // the same file twice, which then trips movies.path UNIQUE and fails the
+  // whole write batch rather than just that one row.
+  return [...new Set(discovered)].filter((path) => !already.has(path))
 }
 
-// A year taken from the filename that disagrees with OMDb's (release vs.
-// production year, a re-release, or simply a wrong year in the name) turns
-// an otherwise-findable film into a miss, since OMDb treats `y` as an exact
-// filter. Retry on the title alone before giving up. This goes beyond the
-// original app, which had no such fallback; the extra request only happens
-// for a file that has already failed.
-async function lookupMovie(apiKey, parsed) {
-  if (parsed.imdbId) return fetchByImdbId(apiKey, parsed.imdbId)
-
-  try {
-    return await fetchByTitle(apiKey, parsed.title, parsed.year)
-  } catch (error) {
-    if (parsed.year && error instanceof OmdbNotFoundError) {
-      return fetchByTitle(apiKey, parsed.title, null)
-    }
-    throw error
-  }
-}
-
-// Runs a lookup against the pool, moving to the next key when one reports
-// its daily limit and retrying the same file. The limit only ends the scan
-// once every key is spent.
-async function lookupWithPool(pool, parsed, failures) {
+// Asks OMDb for the one field TMDB does not carry: the IMDb rating. Anything
+// else it returns is used only to fill gaps TMDB left.
+//
+// Unlike the old pipeline this is best-effort. Metadata now comes from TMDB, so
+// a spent or invalid OMDb key costs a rating, not the scan - hence returning
+// null rather than throwing for anything short of a usable answer.
+async function lookupOmdb(pool, movie, failures) {
   for (;;) {
     const key = pool.current()
-    if (!key) throw new KeysUnavailableError()
+    if (!key) return null
 
-    // A key that is out of quota and a key that is rejected outright are
-    // both unusable for the rest of the run, and neither should strand the
-    // remaining keys - a single typo in one entry would otherwise halt a
-    // scan that the other keys could finish.
     try {
-      return await lookupMovie(key, parsed)
+      return movie.imdb_id
+        ? await fetchByImdbId(key, movie.imdb_id)
+        : await fetchByTitle(key, movie.title, movie.year)
     } catch (error) {
       const isRateLimit = error instanceof OmdbRateLimitError
       const isInvalid = error instanceof OmdbAuthError
-      if (!isRateLimit && !isInvalid) throw error
+      if (!isRateLimit && !isInvalid) return null
 
+      // Neither a spent key nor a rejected one should strand the others, and
+      // marking by key identity - rather than "the current one" - keeps
+      // concurrent reports of the same failure idempotent.
       if (!failures.has(key)) failures.set(key, isRateLimit ? 'rate-limit' : 'invalid')
-      if (!pool.markExhausted(key)) throw new KeysUnavailableError()
-      // another key is available - same file, next key
+      if (!pool.markExhausted(key)) return null
     }
   }
 }
 
-export class KeysUnavailableError extends Error {}
-
-// Always partitions new-vs-already-imported by path BEFORE doing any
-// OMDb/ffprobe work (see the plan's "Note on scan modes") - there is no
-// separate "full" vs "incremental" mode because of that.
+// Always partitions new-vs-already-imported by path BEFORE doing any network or
+// ffprobe work - there is no separate "full" vs "incremental" mode because of
+// that.
 export async function runScan(onProgress) {
   const db = getDb()
-  const keys = listKeyValues(db)
-  if (!keys.length) throw new Error('Add an OMDb API key in Settings before scanning.')
-  const pool = createKeyPool(keys)
+
+  const tmdbKey = getTmdbKey(db)
+  if (!tmdbKey) throw new Error('Add a TMDB API key in Settings before scanning.')
 
   const folders = listFolders(db)
   if (!folders.length) throw new Error('Add at least one library folder in Settings before scanning.')
 
+  // No longer fatal when empty: without an OMDb key every film simply imports
+  // with no IMDb rating, which beats refusing to import anything at all.
+  const pool = createKeyPool(listKeyValues(db))
+
+  // The directory walk can take a while on a large library, and reporting
+  // nothing during it left the progress bar sitting at zero looking hung.
+  onProgress?.({ phase: 'discovering', current: 0, total: 0, currentFile: null })
   const newFiles = await findNewFiles()
   const total = newFiles.length
 
   let processed = 0
   let imported = 0
   let skipped = 0
-  let stopReason = null // 'keys-unavailable' | 'network' | null
+  let withoutRating = 0
+  let stopReason = null // 'tmdb-auth' | 'network' | null
   const keyFailures = new Map() // key -> 'rate-limit' | 'invalid'
   let buffer = []
 
+  // createMovie handles the franchise -> Collection link itself, so the scanner
+  // and the single-movie IPC paths cannot drift apart on it.
   const flushBuffer = db.transaction((movies) => {
     for (const movie of movies) createMovie(db, movie)
   })
 
   function flush() {
     if (!buffer.length) return
-    flushBuffer(buffer)
-    imported += buffer.length
+    // Detached before the write, not after: when the transaction threw, the old
+    // code never reached `buffer = []`, so the same failing batch was retried on
+    // every later flush and those rows were lost silently.
+    const batch = buffer
     buffer = []
+    try {
+      flushBuffer(batch)
+      imported += batch.length
+    } catch (error) {
+      console.warn(`[scan] batch of ${batch.length} failed to write: ${error.message}`)
+      skipped += batch.length
+    }
   }
 
   const limit = createLimiter(CONCURRENCY)
 
   const tasks = newFiles.map((filePath) =>
     limit(async () => {
-      if (stopReason) return
-
-      const parsed = parseFilename(filePath)
-
       try {
-        const omdbData = await lookupWithPool(pool, parsed, keyFailures)
+        if (stopReason) return
+
+        const parsed = parseFilename(filePath)
+        const tmdbData = await fetchTmdbRecord(tmdbKey, parsed)
+
+        const omdb = await lookupOmdb(pool, tmdbData, keyFailures)
+        const movie = mergeOmdbFallbacks(tmdbData, omdb)
+        if (movie.imdb_rating == null) withoutRating += 1
 
         const resolution = await probeResolution(filePath)
 
-        buffer.push({ ...omdbData, ...resolution, path: filePath })
-        if (buffer.length >= CONCURRENCY) flush()
+        buffer.push({ ...movie, ...resolution, path: filePath })
+        if (buffer.length >= FLUSH_BATCH_SIZE) flush()
       } catch (error) {
-        // Once no usable key remains, every remaining file would fail
-        // identically - stop cleanly instead of marking each as "skipped"
-        // one by one, which would look like a wave of not-found titles
-        // rather than one root cause.
-        if (error instanceof KeysUnavailableError) {
-          stopReason = 'keys-unavailable'
-        } else if (error instanceof OmdbNetworkError) {
+        // TMDB is now the sole source of metadata, so a rejected key or a dead
+        // connection means every remaining file would fail identically - stop
+        // once with one root cause instead of logging a wave of "not found".
+        if (error instanceof TmdbAuthError) {
+          stopReason = 'tmdb-auth'
+        } else if (error instanceof TmdbNetworkError) {
           stopReason = 'network'
         } else {
-          // Always say why a file was skipped. A silent counter here once hid
-          // a bug where every healthy OMDb response was being rejected, and
-          // "N skipped" looked indistinguishable from genuine no-match files.
+          // Always say why a file was skipped. A silent counter here once hid a
+          // bug where every healthy response was being rejected, and "N skipped"
+          // looked indistinguishable from genuine no-match files.
           console.warn(`[scan] skipped ${filePath}: ${error.message}`)
           skipped += 1
         }
       } finally {
+        // Inside finally so files short-circuited by stopReason still advance
+        // the counter - otherwise the bar froze below total after a fatal stop
+        // and looked like a hang.
         processed += 1
         onProgress?.({ phase: 'scanning', current: processed, total, currentFile: filePath })
       }
@@ -212,6 +226,7 @@ export async function runScan(onProgress) {
     total,
     imported,
     skipped,
+    withoutRating,
     stopReason,
     keysTotal: pool.total(),
     keysRateLimited: failureReasons.filter((r) => r === 'rate-limit').length,

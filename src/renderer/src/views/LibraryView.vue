@@ -3,7 +3,6 @@ import { onMounted, computed, ref } from 'vue'
 import { useMoviesStore } from '../stores/movies'
 import { useGenresStore } from '../stores/genres'
 import { useFoldersStore } from '../stores/folders'
-import { useOmdbKeysStore } from '../stores/omdbKeys'
 import { useScanStore } from '../stores/scan'
 import { useCollectionsStore } from '../stores/collections'
 import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
@@ -15,21 +14,25 @@ import CompareDialog from '../components/CompareDialog.vue'
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
 const foldersStore = useFoldersStore()
-const keysStore = useOmdbKeysStore()
 const scanStore = useScanStore()
 const collectionsStore = useCollectionsStore()
 
+const tmdbKey = ref('')
+
 onMounted(async () => {
+  tmdbKey.value = (await window.api.settings.getTmdbKey()) ?? ''
   await genresStore.fetch()
   await foldersStore.fetch()
-  await keysStore.fetch()
   await collectionsStore.fetch()
   await moviesStore.fetchRatedOptions()
   await moviesStore.fetch()
 })
 
+// OMDb is no longer required to scan: metadata comes from TMDB now, and a
+// missing OMDb key only costs the IMDb rating. Gating on it would refuse a scan
+// that would otherwise work fine.
 const scanDisabledReason = computed(() => {
-  if (!keysStore.keys.length) return 'Add an OMDb API key in Settings first.'
+  if (!tmdbKey.value) return 'Add a TMDB API key in Settings first.'
   if (!foldersStore.folders.length) return 'Add a library folder in Settings first.'
   return ''
 })

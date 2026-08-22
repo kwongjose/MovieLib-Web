@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import CollectionPicker from './CollectionPicker.vue'
+import { useTrailerStore } from '../stores/trailer'
 
 const props = defineProps({
   movieId: { type: Number, required: true }
@@ -10,6 +11,12 @@ const emit = defineEmits(['close', 'edit', 'deleted'])
 
 const movie = ref(null)
 const loading = ref(true)
+// Posters are hot-linked from TMDB, so a dead URL or a dropped connection would
+// otherwise render as a broken-image icon. Falling back to the existing
+// "No Poster" placeholder keeps the layout intact.
+const posterFailed = ref(false)
+
+const trailerStore = useTrailerStore()
 
 async function load() {
   loading.value = true
@@ -53,7 +60,17 @@ async function deleteMovie() {
       <button class="dialog-box__close" @click="emit('close')">×</button>
 
       <div class="detail">
-        <img v-if="movie.poster_url" :src="movie.poster_url" class="detail__poster" alt="" />
+        <button
+          v-if="movie.poster_url && !posterFailed"
+          class="detail__poster-button"
+          :class="{ 'detail__poster-button--playable': movie.trailer_key }"
+          :disabled="!movie.trailer_key"
+          :title="movie.trailer_key ? 'Play trailer' : 'No trailer available'"
+          @click="trailerStore.open(movie)"
+        >
+          <img :src="movie.poster_url" class="detail__poster" alt="" @error="posterFailed = true" />
+          <span v-if="movie.trailer_key" class="detail__play" aria-hidden="true">▶</span>
+        </button>
         <div v-else class="detail__poster detail__poster--placeholder">No Poster</div>
 
         <div class="detail__info">
@@ -93,6 +110,42 @@ async function deleteMovie() {
 </template>
 
 <style scoped>
+.detail__poster-button {
+  padding: 0;
+  border: none;
+  background: none;
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  cursor: default;
+  line-height: 0;
+}
+
+/* Only a film that actually has a trailer advertises itself as clickable. */
+.detail__poster-button--playable {
+  cursor: pointer;
+}
+
+.detail__play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  color: #fff;
+  background: rgba(10, 11, 14, 0.35);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  border-radius: 6px;
+}
+
+.detail__poster-button--playable:hover .detail__play,
+.detail__poster-button--playable:focus-visible .detail__play {
+  opacity: 1;
+}
+
+
 .dialog-overlay {
   position: fixed;
   inset: 0;

@@ -1,6 +1,7 @@
 <script setup>
 import WatchFolderList from '../components/WatchFolderList.vue'
 import OmdbKeyList from '../components/OmdbKeyList.vue'
+import TmdbKeyField from '../components/TmdbKeyField.vue'
 
 const isDev = import.meta.env.DEV
 
@@ -16,11 +17,21 @@ async function seedFakeMovies() {
 <template>
   <div class="settings-view">
     <section class="settings-view__section">
+      <h2>TMDB API Key</h2>
+      <p class="settings-view__hint">
+        The main metadata source - titles, plots, cast, genres, certificates, posters and
+        trailers. Required for scanning.
+      </p>
+      <TmdbKeyField />
+    </section>
+
+    <section class="settings-view__section">
       <h2>OMDb API Keys</h2>
       <p class="settings-view__hint">
-        Get a free key at omdbapi.com. At least one is required for scanning and IMDb lookups.
-        Add several and they're used in the order shown - when one hits its daily limit
-        (1000 lookups on the free tier) the next takes over automatically.
+        Optional, and used for one thing only: the IMDb rating, which TMDB does not carry.
+        Without a key everything still imports, just with no IMDb score. Get a free key at
+        omdbapi.com. Add several and they're used in the order shown - when one hits its daily
+        limit (1000 lookups on the free tier) the next takes over automatically.
       </p>
       <OmdbKeyList />
     </section>

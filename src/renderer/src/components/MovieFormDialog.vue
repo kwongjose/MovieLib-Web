@@ -102,7 +102,7 @@ async function save() {
   try {
     if (useImdbId.value) {
       if (isEdit.value) {
-        await window.api.movies.refetchFromOmdb(props.movieId, imdbIdInput.value.trim())
+        await window.api.movies.refetchFromTmdb(props.movieId, imdbIdInput.value.trim())
       } else {
         await window.api.movies.createFromImdbId(imdbIdInput.value.trim(), pathInput.value.trim())
       }
@@ -144,7 +144,7 @@ async function save() {
       <template v-else>
         <label class="form__toggle">
           <input v-model="useImdbId" type="checkbox" />
-          {{ isEdit ? 'Refetch from OMDb by IMDb ID' : 'Fetch from OMDb by IMDb ID' }}
+          {{ isEdit ? 'Refetch metadata by IMDb ID' : 'Fetch metadata by IMDb ID' }}
         </label>
 
         <template v-if="useImdbId">

@@ -24,7 +24,7 @@ async function addKey() {
         <button class="keys__remove" @click="keysStore.remove(entry.id)">Remove</button>
       </li>
       <li v-if="keysStore.loaded && !keysStore.keys.length" class="keys__empty">
-        No keys yet - scanning and IMDb lookups need at least one.
+        No keys yet - films will import without an IMDb rating.
       </li>
     </ol>
 

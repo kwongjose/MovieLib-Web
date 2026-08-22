@@ -6,6 +6,7 @@ import MaintenanceView from './views/MaintenanceView.vue'
 import SettingsView from './views/SettingsView.vue'
 import ScanProgressOverlay from './components/ScanProgressOverlay.vue'
 import GenreManagerPopover from './components/GenreManagerPopover.vue'
+import TrailerOverlay from './components/TrailerOverlay.vue'
 
 const views = [
   { id: 'library', label: 'Library' },
@@ -39,6 +40,9 @@ const currentView = ref('library')
       <SettingsView v-else-if="currentView === 'settings'" />
     </main>
     <ScanProgressOverlay />
+    <!-- Mounted once, above every dialog, so a trailer can be opened from the
+         detail or compare view without either of them closing. -->
+    <TrailerOverlay />
   </div>
 </template>
 

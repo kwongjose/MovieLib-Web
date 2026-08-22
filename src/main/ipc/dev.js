@@ -9,6 +9,11 @@ const FAKE_MOVIES = [
     title: 'The Great Escape',
     rated: 'PG',
     year: '1963',
+    tmdb_id: 5925,
+    // A real trailer key, so the player can be exercised without a scan.
+    trailer_key: '2MdC_YMhkFo',
+    trailer_site: 'YouTube',
+    poster_url: 'https://image.tmdb.org/t/p/w342/lUUpCsnBrCEDrxlOPCz4gvcpAmU.jpg',
     imdb_rating: 8.2,
     runtime_minutes: 172,
     runtime_label: '172 min',
@@ -23,6 +28,8 @@ const FAKE_MOVIES = [
     title: 'Galaxy Raiders',
     rated: 'PG-13',
     year: '1999',
+    // Deliberately no trailer_key - covers the "poster is inert, no button"
+    // path in the detail and compare views.
     imdb_rating: 6.4,
     runtime_minutes: 118,
     runtime_label: '118 min',

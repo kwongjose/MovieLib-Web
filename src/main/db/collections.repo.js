@@ -8,6 +8,16 @@ export function createCollection(db, name) {
   return info.lastInsertRowid
 }
 
+// createCollection uses a bare INSERT and throws SQLITE_CONSTRAINT_UNIQUE on a
+// duplicate name - correct for the "New Collection" button, wrong for the
+// importer, which hits the same franchise once per film in it.
+export function findOrCreateCollection(db, name) {
+  const trimmed = (name ?? '').trim()
+  if (!trimmed) return null
+  db.prepare('INSERT OR IGNORE INTO collections (name) VALUES (?)').run(trimmed)
+  return db.prepare('SELECT id FROM collections WHERE name = ? COLLATE NOCASE').get(trimmed).id
+}
+
 export function renameCollection(db, id, name) {
   db.prepare('UPDATE collections SET name = ? WHERE id = ?').run(name.trim(), id)
 }

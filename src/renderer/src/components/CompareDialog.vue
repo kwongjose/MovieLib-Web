@@ -1,11 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useTrailerStore } from '../stores/trailer'
 
 const props = defineProps({
   movieIds: { type: Array, required: true }
 })
 
 const emit = defineEmits(['close', 'remove', 'watched'])
+
+const trailerStore = useTrailerStore()
 
 const movies = ref([])
 const loading = ref(true)
@@ -69,7 +72,19 @@ async function watchMovie(movie) {
             Watched {{ new Date(movie.last_watched_at).toLocaleDateString() }}
           </p>
 
-          <button class="card__watch" @click="watchMovie(movie)">Watch This One</button>
+          <div class="card__actions">
+            <button class="card__watch" @click="watchMovie(movie)">Watch This One</button>
+            <!-- No poster here by design - the cards stay text-only, so the
+                 trailer needs its own affordance. Hidden outright when there is
+                 nothing to play. -->
+            <button
+              v-if="movie.trailer_key"
+              class="card__trailer"
+              @click="trailerStore.open(movie)"
+            >
+              ▶ Trailer
+            </button>
+          </div>
         </article>
       </div>
     </div>
@@ -77,6 +92,28 @@ async function watchMovie(movie) {
 </template>
 
 <style scoped>
+.card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.card__trailer {
+  background: #2d2f37;
+  border: 1px solid #3a3d47;
+  color: #bfc6ff;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.card__trailer:hover {
+  border-color: #6c7bff;
+}
+
+
 .dialog-overlay {
   position: fixed;
   inset: 0;

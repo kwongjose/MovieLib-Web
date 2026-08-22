@@ -25,7 +25,7 @@ const DEFAULT_GENRES = [
   'Western'
 ]
 
-const SCHEMA_VERSION = '1'
+const SCHEMA_VERSION = '2'
 
 const CREATE_STATEMENTS = `
 CREATE TABLE IF NOT EXISTS movies (
@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS movies (
   rated             TEXT,
   imdb_rating       REAL,
   imdb_id           TEXT,
+  tmdb_id           INTEGER,
+  -- A TMDB id is only unique within a media type - movie 1396 and TV 1396 are
+  -- different titles - so the type has to travel with the id. Only 'movie' is
+  -- written today; the column exists so adding TV later isn't a schema change.
+  tmdb_media_type   TEXT NOT NULL DEFAULT 'movie',
+  -- trailer_checked_at distinguishes "looked, found nothing" from "never
+  -- looked", which a null trailer_key alone can't express.
+  trailer_key       TEXT,
+  trailer_site      TEXT,
+  trailer_checked_at TEXT,
   runtime_minutes   INTEGER,
   runtime_label     TEXT,
   width             INTEGER,
@@ -50,6 +60,7 @@ CREATE TABLE IF NOT EXISTS movies (
 CREATE INDEX IF NOT EXISTS idx_movies_year        ON movies(year);
 CREATE INDEX IF NOT EXISTS idx_movies_imdb_rating ON movies(imdb_rating);
 CREATE INDEX IF NOT EXISTS idx_movies_watched     ON movies(last_watched_at);
+CREATE INDEX IF NOT EXISTS idx_movies_tmdb_id     ON movies(tmdb_id);
 
 CREATE TABLE IF NOT EXISTS actors (
   id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +70,11 @@ CREATE TABLE IF NOT EXISTS actors (
 CREATE TABLE IF NOT EXISTS movie_actors (
   movie_id INTEGER NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
   actor_id INTEGER NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+  -- Billing position from TMDB's cast order. Without it the cast can only be
+  -- listed alphabetically, which buries the lead - "Ana de Armas, Dave
+  -- Bautista, Harrison Ford" instead of "Ryan Gosling, Harrison Ford".
+  -- NULL for hand-added actors, which sort last by name.
+  billing_order INTEGER,
   PRIMARY KEY (movie_id, actor_id)
 );
 CREATE INDEX IF NOT EXISTS idx_movie_actors_actor ON movie_actors(actor_id);
@@ -120,10 +136,57 @@ CREATE VIRTUAL TABLE IF NOT EXISTS movies_fts USING fts5(
 `
 
 export function applySchema(db) {
+  resetLegacyMovieTables(db)
   db.exec(CREATE_STATEMENTS)
   seedGenres(db)
   migrateSingleApiKey(db)
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION)
+}
+
+// Moving to TMDB added columns to `movies`, and CREATE TABLE IF NOT EXISTS
+// silently does nothing when the table already exists - so a pre-TMDB database
+// would survive startup and then fail with "no such column: tmdb_id" on the
+// first query. The library is meant to be rebuilt from scratch anyway, so drop
+// the movie data and let CREATE_STATEMENTS rebuild it.
+//
+// Deliberately narrow: genres, collections, settings, omdb_keys and
+// watch_folders are left alone, so API keys, library folders and hand-made
+// collections all survive the reset. Only rows that have to be re-imported go.
+function resetLegacyMovieTables(db) {
+  const moviesTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'movies'")
+    .get()
+  if (!moviesTable) return
+
+  // Both tables gained columns in the TMDB change, so both are checked - a
+  // database left half-upgraded by an in-progress build would otherwise pass
+  // the movies check and then fail on movie_actors.billing_order instead.
+  const hasTmdbId = db
+    .prepare('PRAGMA table_info(movies)')
+    .all()
+    .some((column) => column.name === 'tmdb_id')
+  const hasBillingOrder = db
+    .prepare('PRAGMA table_info(movie_actors)')
+    .all()
+    .some((column) => column.name === 'billing_order')
+  if (hasTmdbId && hasBillingOrder) return
+
+  // foreign_keys can't be toggled inside a transaction, and the junction tables
+  // reference movies, so drop children first with enforcement off.
+  db.pragma('foreign_keys = OFF')
+  try {
+    db.exec(`
+      DROP TABLE IF EXISTS movies_fts;
+      DROP TABLE IF EXISTS movie_actors;
+      DROP TABLE IF EXISTS movie_genres;
+      DROP TABLE IF EXISTS movie_collections;
+      DROP TABLE IF EXISTS movies;
+      DROP TABLE IF EXISTS actors;
+    `)
+  } finally {
+    db.pragma('foreign_keys = ON')
+  }
+  console.log('[db] pre-TMDB library detected - movie tables reset; keys, folders and collections kept')
 }
 
 // The API key used to be a single settings row. Carry any existing one into

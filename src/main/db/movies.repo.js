@@ -1,7 +1,17 @@
 import { normalize } from 'node:path'
-import { listActorsForMovie, actorNamesForMovie, addActorToMovieByName, unlinkActorFromMovie } from './actors.repo'
+import {
+  listActorsForMovie,
+  actorNamesForMovie,
+  addActorToMovieByName,
+  unlinkActorFromMovie,
+  setActorsForMovie
+} from './actors.repo'
 import { listGenresForMovie, setGenresForMovie } from './genres.repo'
-import { listCollectionsForMovie } from './collections.repo'
+import {
+  listCollectionsForMovie,
+  findOrCreateCollection,
+  addMovieToCollection
+} from './collections.repo'
 
 const SORTABLE_COLUMNS = {
   title: 'm.title COLLATE NOCASE',
@@ -140,6 +150,11 @@ const MOVIE_COLUMNS = [
   'rated',
   'imdb_rating',
   'imdb_id',
+  'tmdb_id',
+  'tmdb_media_type',
+  'trailer_key',
+  'trailer_site',
+  'trailer_checked_at',
   'runtime_minutes',
   'runtime_label',
   'width',
@@ -159,6 +174,16 @@ function normalizePayloadPath(payload) {
   return { ...payload, path: normalize(payload.path) }
 }
 
+// TMDB franchises ("Blade Runner Collection") map onto the app's existing
+// Collections rather than a parallel concept, so an imported franchise behaves
+// exactly like a hand-made collection and stays user-editable. Additive only -
+// re-importing never removes a collection the user assigned themselves.
+function linkCollectionByName(db, movieId, collectionName) {
+  if (!collectionName) return
+  const collectionId = findOrCreateCollection(db, collectionName)
+  if (collectionId) addMovieToCollection(db, collectionId, movieId)
+}
+
 export function createMovie(db, rawPayload) {
   const payload = normalizePayloadPath(rawPayload)
   const columns = MOVIE_COLUMNS.filter((col) => payload[col] !== undefined)
@@ -171,9 +196,8 @@ export function createMovie(db, rawPayload) {
   const movieId = info.lastInsertRowid
 
   if (payload.genreNames) setGenresForMovie(db, movieId, payload.genreNames)
-  if (payload.actorNames) {
-    for (const name of payload.actorNames) addActorToMovieByName(db, movieId, name)
-  }
+  if (payload.actorNames) setActorsForMovie(db, movieId, payload.actorNames)
+  linkCollectionByName(db, movieId, payload.collectionName)
 
   syncFtsForMovie(db, movieId)
   return getMovieById(db, movieId)
@@ -189,27 +213,35 @@ export function updateMovie(db, id, rawPayload) {
   }
 
   if (payload.genreNames) setGenresForMovie(db, id, payload.genreNames)
+  if (payload.actorNames) setActorsForMovie(db, id, payload.actorNames)
+  linkCollectionByName(db, id, payload.collectionName)
 
   syncFtsForMovie(db, id)
   return getMovieById(db, id)
 }
 
-// Replaces only the OMDb-sourced fields (used by "refetch from OMDb by IMDb ID").
-// width/height/resolution_label/path are deliberately untouched - the locally
-// probed resolution and file location survive a refetch.
-export function updateOmdbFields(db, id, omdbFields) {
+// Replaces the fetched-metadata fields only. width/height/resolution_label and
+// path are deliberately untouched: the locally probed resolution and the file's
+// location must survive a refetch.
+export function updateMetadataFields(db, id, fields) {
   return updateMovie(db, id, {
-    title: omdbFields.title,
-    year: omdbFields.year,
-    rated: omdbFields.rated,
-    imdb_rating: omdbFields.imdb_rating,
-    imdb_id: omdbFields.imdb_id,
-    runtime_minutes: omdbFields.runtime_minutes,
-    runtime_label: omdbFields.runtime_label,
-    plot: omdbFields.plot,
-    poster_url: omdbFields.poster_url,
-    genreNames: omdbFields.genreNames,
-    actorNames: omdbFields.actorNames
+    title: fields.title,
+    year: fields.year,
+    rated: fields.rated,
+    imdb_rating: fields.imdb_rating,
+    imdb_id: fields.imdb_id,
+    tmdb_id: fields.tmdb_id,
+    tmdb_media_type: fields.tmdb_media_type,
+    trailer_key: fields.trailer_key,
+    trailer_site: fields.trailer_site,
+    trailer_checked_at: fields.trailer_checked_at,
+    runtime_minutes: fields.runtime_minutes,
+    runtime_label: fields.runtime_label,
+    plot: fields.plot,
+    poster_url: fields.poster_url,
+    genreNames: fields.genreNames,
+    actorNames: fields.actorNames,
+    collectionName: fields.collectionName
   })
 }
 
@@ -266,10 +298,22 @@ export function listRatedValues(db) {
 }
 
 export function findDuplicateMovies(db) {
+  // Grouped by tmdb_id first: it is an exact identity, so the same film under
+  // two different filenames is caught even when the parsed titles disagree.
+  // The title+year pass is kept for rows with no tmdb_id (hand-added films, or
+  // anything imported before the TMDB switch), and the two are unioned so
+  // neither kind of duplicate is missed.
   return db
     .prepare(
       `SELECT title, year, COUNT(*) AS count, GROUP_CONCAT(id) AS movie_ids
        FROM movies
+       WHERE tmdb_id IS NOT NULL
+       GROUP BY tmdb_id
+       HAVING COUNT(*) > 1
+       UNION ALL
+       SELECT title, year, COUNT(*) AS count, GROUP_CONCAT(id) AS movie_ids
+       FROM movies
+       WHERE tmdb_id IS NULL
        GROUP BY title, year
        HAVING COUNT(*) > 1
        ORDER BY title COLLATE NOCASE`

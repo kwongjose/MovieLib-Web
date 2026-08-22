@@ -11,8 +11,6 @@ function describeKeyFailures(result) {
   return parts.join(', ')
 }
 
-const keyFailureSummary = computed(() => describeKeyFailures(scanStore.result ?? {}))
-
 // A scan that finished but burned through keys on the way is still worth
 // flagging - those keys won't be there for the next run.
 const keyFailoverNote = computed(() => {
@@ -20,8 +18,18 @@ const keyFailoverNote = computed(() => {
   if (!result) return ''
   const summary = describeKeyFailures(result)
   if (!summary) return ''
-  return `Switched keys during the scan (${summary} of ${result.keysTotal}).`
+  return `Switched OMDb keys during the scan (${summary} of ${result.keysTotal}).`
 })
+
+// Demoted from a fatal stop to a note: OMDb now supplies only the IMDb rating,
+// so running out of keys costs ratings on some films rather than ending the run.
+const missingRatingsNote = computed(() => {
+  const count = scanStore.result?.withoutRating
+  if (!count) return ''
+  return `${count} film(s) imported without an IMDb rating (no usable OMDb key).`
+})
+
+const isDiscovering = computed(() => scanStore.progress?.phase === 'discovering')
 
 const percent = computed(() => {
   const p = scanStore.progress
@@ -33,8 +41,10 @@ const percent = computed(() => {
 <template>
   <div v-if="scanStore.scanning" class="scan-overlay">
     <div class="scan-overlay__box">
-      <p class="scan-overlay__title">Scanning for new movies…</p>
-      <p v-if="scanStore.progress" class="scan-overlay__detail">
+      <p class="scan-overlay__title">
+        {{ isDiscovering ? 'Looking for video files…' : 'Scanning for new movies…' }}
+      </p>
+      <p v-if="scanStore.progress && !isDiscovering" class="scan-overlay__detail">
         {{ scanStore.progress.current }} / {{ scanStore.progress.total }}
       </p>
       <p v-if="scanStore.progress?.currentFile" class="scan-overlay__file">
@@ -50,15 +60,17 @@ const percent = computed(() => {
     <p v-if="scanStore.error" class="scan-result__error">{{ scanStore.error }}</p>
     <p v-else class="scan-result__summary">
       Imported {{ scanStore.result.imported }} of {{ scanStore.result.total }} new file(s).
-      <span v-if="scanStore.result.skipped">{{ scanStore.result.skipped }} skipped (not found on OMDb).</span>
-      <span v-if="scanStore.result.stopReason === 'keys-unavailable'" class="scan-result__warning">
-        Stopped early - no usable OMDb keys left ({{ keyFailureSummary }}). Run again tomorrow,
-        or add another key in Settings.
+      <span v-if="scanStore.result.skipped">{{ scanStore.result.skipped }} skipped (no TMDB match).</span>
+      <span v-if="scanStore.result.stopReason === 'tmdb-auth'" class="scan-result__warning">
+        Stopped early - TMDB rejected the API key. Check it in Settings.
       </span>
       <span v-else-if="scanStore.result.stopReason === 'network'" class="scan-result__warning">
-        Stopped early - could not reach OMDb. Check your internet connection.
+        Stopped early - could not reach TMDB. Check your internet connection.
       </span>
-      <span v-else-if="keyFailoverNote" class="scan-result__note">{{ keyFailoverNote }}</span>
+      <template v-else>
+        <span v-if="missingRatingsNote" class="scan-result__note">{{ missingRatingsNote }}</span>
+        <span v-if="keyFailoverNote" class="scan-result__note">{{ keyFailoverNote }}</span>
+      </template>
     </p>
     <button class="scan-result__dismiss" @click="scanStore.dismiss">Dismiss</button>
   </div>

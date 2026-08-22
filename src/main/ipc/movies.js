@@ -3,25 +3,42 @@ import { existsSync, unlinkSync } from 'node:fs'
 import { getDb } from '../db'
 import * as moviesRepo from '../db/movies.repo'
 import { listKeyValues } from '../db/omdbKeys.repo'
-import { fetchByImdbId, OmdbRateLimitError } from '../importer/omdbClient'
+import { getTmdbKey } from '../db/settings.repo'
+import { fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from '../importer/omdbClient'
+import { fetchTmdbRecord, mergeOmdbFallbacks, imdbIdLookup } from '../importer/buildMovie'
 import { probeResolution } from '../importer/probeVideo'
 
-// Single-movie lookups walk the same key list as a scan, so one exhausted
-// key doesn't block adding a film by hand.
-async function withAnyKey(db, run) {
-  const keys = listKeyValues(db)
-  if (!keys.length) throw new Error('Add an OMDb API key in Settings first.')
+function requireTmdbKey(db) {
+  const key = getTmdbKey(db)
+  if (!key) throw new Error('Add a TMDB API key in Settings first.')
+  return key
+}
 
-  let lastRateLimit = null
-  for (const key of keys) {
+// Single-movie lookups walk the same key list as a scan, so one exhausted key
+// does not block adding a film by hand.
+//
+// Best-effort, matching the scanner: TMDB supplies the metadata now, so having
+// no usable OMDb key costs the IMDb rating rather than failing the whole add.
+async function ratingFromOmdb(db, imdbId) {
+  if (!imdbId) return null
+
+  for (const key of listKeyValues(db)) {
     try {
-      return await run(key)
+      return await fetchByImdbId(key, imdbId)
     } catch (error) {
-      if (!(error instanceof OmdbRateLimitError)) throw error
-      lastRateLimit = error
+      // Try the next key for a spent or rejected one; anything else (not found,
+      // network) means OMDb has nothing useful to add for this film.
+      if (!(error instanceof OmdbRateLimitError) && !(error instanceof OmdbAuthError)) return null
     }
   }
-  throw lastRateLimit ?? new Error('All OMDb keys have reached their daily limit.')
+  return null
+}
+
+// Builds the same record the scanner produces, for the "Add by IMDb ID" and
+// "refetch" paths. Shared through buildMovie so the two cannot diverge.
+async function buildFromImdbId(db, imdbId) {
+  const tmdbData = await fetchTmdbRecord(requireTmdbKey(db), imdbIdLookup(imdbId))
+  return mergeOmdbFallbacks(tmdbData, await ratingFromOmdb(db, tmdbData.imdb_id || imdbId))
 }
 
 function cleanupMissingFiles() {
@@ -43,17 +60,16 @@ export function registerMoviesIpc() {
 
   ipcMain.handle('movies:createFromImdbId', async (_e, imdbId, path) => {
     const db = getDb()
-    const omdbData = await withAnyKey(db, (key) => fetchByImdbId(key, imdbId))
+    const movie = await buildFromImdbId(db, imdbId)
     const resolution = await probeResolution(path)
-    return moviesRepo.createMovie(db, { ...omdbData, ...resolution, path })
+    return moviesRepo.createMovie(db, { ...movie, ...resolution, path })
   })
 
-  // Refetches OMDb-sourced fields only - width/height/resolution_label/path
-  // are left untouched (see movies.repo.js updateOmdbFields).
-  ipcMain.handle('movies:refetchFromOmdb', async (_e, id, imdbId) => {
+  // Refetches fetched-metadata fields only - width/height/resolution_label/path
+  // are left untouched (see movies.repo.js updateMetadataFields).
+  ipcMain.handle('movies:refetchFromTmdb', async (_e, id, imdbId) => {
     const db = getDb()
-    const omdbData = await withAnyKey(db, (key) => fetchByImdbId(key, imdbId))
-    return moviesRepo.updateOmdbFields(db, id, omdbData)
+    return moviesRepo.updateMetadataFields(db, id, await buildFromImdbId(db, imdbId))
   })
 
   ipcMain.handle('movies:delete', (_e, id, options = {}) => {
