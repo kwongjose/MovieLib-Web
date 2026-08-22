@@ -43,7 +43,8 @@ export function syncFtsForMovie(db, movieId) {
 }
 
 export function listMovies(db, filters = {}) {
-  const { search, genreIds, decades, ratingBuckets, collectionIds, watched, sortBy, sortDir } = filters
+  const { search, genreIds, decades, ratingBuckets, ratedValues, collectionIds, watched, sortBy, sortDir } =
+    filters
 
   const where = []
   const params = []
@@ -84,6 +85,15 @@ export function listMovies(db, filters = {}) {
         return `(${bucket.clause})`
       })
     if (bucketClauses.length) where.push(`(${bucketClauses.join(' OR ')})`)
+  }
+
+  // MPAA certificate, matched exactly against the values actually present in
+  // the library (OMDb returns everything from "PG-13" to "Approved" to
+  // "TV-MA" depending on the film's age and type, so the option list is
+  // built from the data rather than hardcoded).
+  if (ratedValues && ratedValues.length) {
+    where.push(`m.rated IN (${ratedValues.map(() => '?').join(',')})`)
+    params.push(...ratedValues)
   }
 
   if (watched === true) where.push('m.last_watched_at IS NOT NULL')
@@ -245,6 +255,14 @@ export function deleteManyMovies(db, ids) {
     for (const id of movieIds) deleteMovie(db, id)
   })
   deleteAll(ids)
+}
+
+// Distinct MPAA certificates present in the library, for the filter list.
+export function listRatedValues(db) {
+  return db
+    .prepare("SELECT DISTINCT rated FROM movies WHERE rated IS NOT NULL AND rated <> '' ORDER BY rated COLLATE NOCASE")
+    .all()
+    .map((r) => r.rated)
 }
 
 export function findDuplicateMovies(db) {

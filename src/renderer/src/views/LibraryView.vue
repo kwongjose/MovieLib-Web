@@ -24,6 +24,7 @@ onMounted(async () => {
   await foldersStore.fetch()
   await settingsStore.fetch()
   await collectionsStore.fetch()
+  await moviesStore.fetchRatedOptions()
   await moviesStore.fetch()
 })
 
@@ -35,11 +36,13 @@ const scanDisabledReason = computed(() => {
 
 async function onScanClick() {
   await scanStore.start()
+  await moviesStore.fetchRatedOptions()
   await moviesStore.fetch()
 }
 
 const genreOptions = computed(() => genresStore.genres.map((g) => ({ value: g.id, label: g.name })))
 const collectionOptions = computed(() => collectionsStore.collections.map((c) => ({ value: c.id, label: c.name })))
+const ratedOptions = computed(() => moviesStore.ratedOptions.map((r) => ({ value: r, label: r })))
 
 const currentDecadeStart = Math.floor(new Date().getFullYear() / 10) * 10
 const decadeOptions = []
@@ -120,7 +123,13 @@ async function onMovieDeleted() {
         @update:model-value="moviesStore.setDecades"
       />
       <MultiSelectDropdown
-        label="Rating"
+        label="Rated"
+        :options="ratedOptions"
+        :model-value="moviesStore.filters.ratedValues"
+        @update:model-value="moviesStore.setRatedValues"
+      />
+      <MultiSelectDropdown
+        label="IMDb"
         :options="ratingOptions"
         :model-value="moviesStore.filters.ratingBuckets"
         @update:model-value="moviesStore.setRatingBuckets"

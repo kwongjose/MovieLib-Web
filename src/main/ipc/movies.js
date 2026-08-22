@@ -66,6 +66,7 @@ export function registerMoviesIpc() {
   )
   ipcMain.handle('movies:clearWatched', (_e, id) => moviesRepo.clearMovieWatched(getDb(), id))
 
+  ipcMain.handle('movies:listRatedValues', () => moviesRepo.listRatedValues(getDb()))
   ipcMain.handle('movies:findDuplicates', () => moviesRepo.findDuplicateMovies(getDb()))
   ipcMain.handle('movies:cleanupMissingFiles', () => cleanupMissingFiles())
   ipcMain.handle('movies:resetLibrary', () => {

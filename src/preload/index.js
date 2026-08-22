@@ -15,6 +15,7 @@ const api = {
     removeActor: (movieId, actorId) => ipcRenderer.invoke('movies:removeActor', movieId, actorId),
     markWatched: (id, options) => ipcRenderer.invoke('movies:markWatched', id, options),
     clearWatched: (id) => ipcRenderer.invoke('movies:clearWatched', id),
+    listRatedValues: () => ipcRenderer.invoke('movies:listRatedValues'),
     findDuplicates: () => ipcRenderer.invoke('movies:findDuplicates'),
     cleanupMissingFiles: () => ipcRenderer.invoke('movies:cleanupMissingFiles'),
     resetLibrary: () => ipcRenderer.invoke('movies:resetLibrary')

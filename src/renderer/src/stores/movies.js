@@ -9,6 +9,7 @@ function defaultFilters() {
     genreIds: [],
     decades: [],
     ratingBuckets: [],
+    ratedValues: [],
     collectionIds: [],
     watched: null,
     sortBy: 'title',
@@ -22,6 +23,7 @@ function defaultFilters() {
 export const useMoviesStore = defineStore('movies', {
   state: () => ({
     movies: [],
+    ratedOptions: [],
     loading: false,
     error: null,
     filters: defaultFilters()
@@ -56,6 +58,15 @@ export const useMoviesStore = defineStore('movies', {
     setRatingBuckets(buckets) {
       this.filters.ratingBuckets = buckets
       this.fetch()
+    },
+    setRatedValues(values) {
+      this.filters.ratedValues = values
+      this.fetch()
+    },
+    // Refreshed after imports, since a scan can introduce certificates the
+    // library didn't previously contain.
+    async fetchRatedOptions() {
+      this.ratedOptions = await window.api.movies.listRatedValues()
     },
     setCollectionIds(ids) {
       this.filters.collectionIds = ids
