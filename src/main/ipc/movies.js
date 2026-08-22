@@ -6,6 +6,7 @@ import { listKeyValues } from '../db/omdbKeys.repo'
 import { getTmdbKey } from '../db/settings.repo'
 import { fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from '../importer/omdbClient'
 import { fetchTmdbRecord, mergeOmdbFallbacks, imdbIdLookup } from '../importer/buildMovie'
+import { backfillRatings } from '../importer/backfillRatings'
 import { probeResolution } from '../importer/probeVideo'
 
 function requireTmdbKey(db) {
@@ -94,6 +95,17 @@ export function registerMoviesIpc() {
 
   ipcMain.handle('movies:listRatedValues', () => moviesRepo.listRatedValues(getDb()))
   ipcMain.handle('movies:findDuplicates', () => moviesRepo.findDuplicateMovies(getDb()))
+  ipcMain.handle('movies:countMissingRatings', () => moviesRepo.countMoviesMissingRating(getDb()))
+
+  // A re-scan never revisits an imported file, so films that missed their rating
+  // during a scan can only be filled in here.
+  ipcMain.handle('movies:backfillRatings', async (event) => {
+    const { sender } = event
+    return backfillRatings((progress) => {
+      if (!sender.isDestroyed()) sender.send('movies:backfillProgress', progress)
+    })
+  })
+
   ipcMain.handle('movies:cleanupMissingFiles', () => cleanupMissingFiles())
   ipcMain.handle('movies:resetLibrary', () => {
     moviesRepo.resetLibrary(getDb())

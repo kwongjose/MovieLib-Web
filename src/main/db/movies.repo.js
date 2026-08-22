@@ -321,6 +321,37 @@ export function findDuplicateMovies(db) {
     .all()
 }
 
+// Films the scan imported without an IMDb rating - because OMDb had no usable
+// key at the time, or was unreachable. TMDB carries no rating of its own, so
+// these can only be filled by going back to OMDb later.
+//
+// imdb_id is included because it makes the lookup exact; rows without one fall
+// back to a title+year search.
+export function listMoviesMissingRating(db) {
+  return db
+    .prepare(
+      `SELECT id, title, year, imdb_id
+       FROM movies
+       WHERE imdb_rating IS NULL
+       ORDER BY title COLLATE NOCASE`
+    )
+    .all()
+}
+
+export function countMoviesMissingRating(db) {
+  return db.prepare('SELECT COUNT(*) AS c FROM movies WHERE imdb_rating IS NULL').get().c
+}
+
+// Deliberately narrow: writes the one column and nothing else. Routing this
+// through updateMovie would also re-apply genres, cast and collections from a
+// payload that does not have them, wiping TMDB data to fill in a number.
+export function updateImdbRating(db, id, rating) {
+  db.prepare("UPDATE movies SET imdb_rating = ?, updated_at = datetime('now') WHERE id = ?").run(
+    rating,
+    id
+  )
+}
+
 export function existingPaths(db) {
   return new Set(db.prepare('SELECT path FROM movies').all().map((r) => r.path))
 }

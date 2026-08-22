@@ -1,11 +1,40 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const duplicates = ref(null)
 const notImported = ref(null)
 const cleanupResult = ref(null)
 const resetDone = ref(false)
-const loading = ref(null) // 'duplicates' | 'notImported' | 'cleanup' | null
+const loading = ref(null) // 'duplicates' | 'notImported' | 'cleanup' | 'ratings' | null
+
+const missingRatings = ref(null)
+const ratingProgress = ref(null)
+const ratingResult = ref(null)
+const ratingError = ref('')
+let unsubscribeRatings = null
+
+onMounted(async () => {
+  missingRatings.value = await window.api.movies.countMissingRatings()
+  unsubscribeRatings = window.api.movies.onBackfillProgress((p) => (ratingProgress.value = p))
+})
+
+onUnmounted(() => unsubscribeRatings?.())
+
+async function fetchMissingRatings() {
+  loading.value = 'ratings'
+  ratingResult.value = null
+  ratingError.value = ''
+  ratingProgress.value = null
+  try {
+    ratingResult.value = await window.api.movies.backfillRatings()
+  } catch (error) {
+    ratingError.value = error.message
+  } finally {
+    missingRatings.value = await window.api.movies.countMissingRatings()
+    ratingProgress.value = null
+    loading.value = null
+  }
+}
 
 async function findDuplicates() {
   loading.value = 'duplicates'
@@ -65,6 +94,47 @@ async function resetLibrary() {
           Nothing found - everything in your folders is already imported.
         </li>
       </ul>
+    </section>
+
+    <section class="maintenance-view__section">
+      <h2>IMDb Ratings</h2>
+      <p class="maintenance-view__hint">
+        TMDB carries no IMDb rating, so it comes from OMDb - and a scan run while your OMDb
+        key was spent imports films with that column empty. Free keys allow 1000 lookups a
+        day, so a large library will not finish in one go. Re-scanning won't fix it, since a
+        scan only looks at files it hasn't imported before. Run this to fill in the gaps -
+        one lookup per film, and it picks up where it left off.
+      </p>
+
+      <p v-if="missingRatings !== null" class="maintenance-view__result">
+        {{ missingRatings === 0
+          ? 'Every film has an IMDb rating.'
+          : `${missingRatings} film(s) have no IMDb rating.` }}
+      </p>
+
+      <button
+        :disabled="loading === 'ratings' || missingRatings === 0"
+        @click="fetchMissingRatings"
+      >
+        {{ loading === 'ratings' ? 'Fetching…' : 'Fetch Missing Ratings' }}
+      </button>
+
+      <p v-if="ratingProgress" class="maintenance-view__result">
+        {{ ratingProgress.current }} / {{ ratingProgress.total }} - {{ ratingProgress.currentTitle }}
+      </p>
+
+      <p v-if="ratingError" class="maintenance-view__error">{{ ratingError }}</p>
+
+      <p v-else-if="ratingResult" class="maintenance-view__result">
+        Filled {{ ratingResult.filled }} of {{ ratingResult.total }}.
+        <span v-if="ratingResult.unavailable">
+          {{ ratingResult.unavailable }} have no rating on OMDb.
+        </span>
+        <span v-if="ratingResult.stoppedEarly">
+          Stopped with {{ ratingResult.remaining }} left - no usable OMDb key remaining.
+          Free keys reset daily, so run this again tomorrow or add another key in Settings.
+        </span>
+      </p>
     </section>
 
     <section class="maintenance-view__section">
@@ -149,6 +219,12 @@ async function resetLibrary() {
   margin: 10px 0 0;
   font-size: 13px;
   color: #7ed492;
+}
+
+.maintenance-view__error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #e08a8a;
 }
 
 .maintenance-view__section--danger {

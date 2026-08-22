@@ -17,6 +17,13 @@ const api = {
     clearWatched: (id) => ipcRenderer.invoke('movies:clearWatched', id),
     listRatedValues: () => ipcRenderer.invoke('movies:listRatedValues'),
     findDuplicates: () => ipcRenderer.invoke('movies:findDuplicates'),
+    countMissingRatings: () => ipcRenderer.invoke('movies:countMissingRatings'),
+    backfillRatings: () => ipcRenderer.invoke('movies:backfillRatings'),
+    onBackfillProgress: (callback) => {
+      const listener = (_event, data) => callback(data)
+      ipcRenderer.on('movies:backfillProgress', listener)
+      return () => ipcRenderer.removeListener('movies:backfillProgress', listener)
+    },
     cleanupMissingFiles: () => ipcRenderer.invoke('movies:cleanupMissingFiles'),
     resetLibrary: () => ipcRenderer.invoke('movies:resetLibrary')
   },

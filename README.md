@@ -54,6 +54,14 @@ OMDb is optional because TMDB carries everything except the IMDb rating. Without
 key every film still imports — the IMDb column is simply empty. A spent or invalid OMDb
 key costs you ratings, not the scan.
 
+That has a consequence worth knowing about on a large library. Free OMDb keys allow 1,000
+lookups a day, so a library past a thousand films **will** finish its first scan with some
+ratings missing. Re-scanning won't fix it — a scan only looks at files it hasn't imported
+before, so those films are never revisited. **Maintenance → Fetch Missing Ratings** fills
+the gaps, one lookup per film, and resumes where it left off when the daily limit resets.
+
+![Maintenance view](docs/screenshots/maintenance.png)
+
 Each file costs three requests: one to resolve it to a TMDB id, one for the metadata
 (TMDB's `append_to_response` returns details, videos, credits and certificates in a
 single call), and one to OMDb for the rating. Five files are processed concurrently.
