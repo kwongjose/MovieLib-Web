@@ -24,6 +24,10 @@ export const useMoviesStore = defineStore('movies', {
   state: () => ({
     movies: [],
     ratedOptions: [],
+    // Comparison picks live here rather than in the view so they survive
+    // filtering and re-sorting - you can narrow to one genre, tick a film,
+    // change the filter, and tick another.
+    selectedIds: [],
     loading: false,
     error: null,
     filters: defaultFilters()
@@ -88,6 +92,20 @@ export const useMoviesStore = defineStore('movies', {
     clearFilters() {
       this.filters = defaultFilters()
       this.fetch()
+    },
+    toggleSelected(id) {
+      this.selectedIds = this.selectedIds.includes(id)
+        ? this.selectedIds.filter((x) => x !== id)
+        : [...this.selectedIds, id]
+    },
+    setVisibleSelected(select) {
+      const visible = this.movies.map((m) => m.id)
+      this.selectedIds = select
+        ? [...new Set([...this.selectedIds, ...visible])]
+        : this.selectedIds.filter((id) => !visible.includes(id))
+    },
+    clearSelection() {
+      this.selectedIds = []
     }
   }
 })

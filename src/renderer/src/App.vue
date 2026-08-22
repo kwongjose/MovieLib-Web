@@ -5,6 +5,7 @@ import CollectionsView from './views/CollectionsView.vue'
 import MaintenanceView from './views/MaintenanceView.vue'
 import SettingsView from './views/SettingsView.vue'
 import ScanProgressOverlay from './components/ScanProgressOverlay.vue'
+import GenreManagerPopover from './components/GenreManagerPopover.vue'
 
 const views = [
   { id: 'library', label: 'Library' },
@@ -28,6 +29,8 @@ const currentView = ref('library')
       >
         {{ view.label }}
       </button>
+      <!-- An action rather than a view, so it sits apart from the tabs. -->
+      <GenreManagerPopover class="app-nav__action" />
     </nav>
     <main class="app-content">
       <LibraryView v-if="currentView === 'library'" />
@@ -66,10 +69,18 @@ const currentView = ref('library')
 
   .app-nav {
     display: flex;
+    align-items: center;
     gap: 4px;
     padding: 8px 12px;
     background: #24262d;
     border-bottom: 1px solid #33353d;
+    /* Above the page content so the genre popover isn't clipped by it. */
+    position: relative;
+    z-index: 20;
+  }
+
+  .app-nav__action {
+    margin-left: auto;
   }
 
   .app-nav__button {

@@ -10,7 +10,7 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown.vue'
 import MovieTable from '../components/MovieTable.vue'
 import MovieDetailDialog from '../components/MovieDetailDialog.vue'
 import MovieFormDialog from '../components/MovieFormDialog.vue'
-import GenreManagerPopover from '../components/GenreManagerPopover.vue'
+import CompareDialog from '../components/CompareDialog.vue'
 
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
@@ -102,6 +102,18 @@ async function onMovieDeleted() {
   selectedMovieId.value = null
   await moviesStore.fetch()
 }
+
+const comparing = ref(false)
+
+function removeFromComparison(id) {
+  moviesStore.toggleSelected(id)
+  if (moviesStore.selectedIds.length === 0) comparing.value = false
+}
+
+async function onComparedWatched() {
+  // Reflect the new watched date in the grid behind the dialog.
+  await moviesStore.fetch()
+}
 </script>
 
 <template>
@@ -144,7 +156,27 @@ async function onMovieDeleted() {
         @update:model-value="moviesStore.setCollectionIds"
       />
       <button class="library-view__clear" @click="moviesStore.clearFilters">Show All</button>
-      <GenreManagerPopover />
+    </div>
+
+    <!-- Actions on their own row: the filter row grew past one line as
+         dropdowns were added, and letting it wrap put related buttons in
+         unrelated places. -->
+    <div class="library-view__actions">
+      <button
+        class="library-view__compare"
+        :disabled="moviesStore.selectedIds.length < 2"
+        :title="moviesStore.selectedIds.length < 2 ? 'Tick at least two movies to compare' : ''"
+        @click="comparing = true"
+      >
+        Compare<span v-if="moviesStore.selectedIds.length"> ({{ moviesStore.selectedIds.length }})</span>
+      </button>
+      <button
+        v-if="moviesStore.selectedIds.length"
+        class="library-view__clear"
+        @click="moviesStore.clearSelection"
+      >
+        Clear Selection
+      </button>
       <button class="library-view__add" @click="openAddForm">+ Add Movie</button>
       <button
         class="library-view__scan"
@@ -165,8 +197,11 @@ async function onMovieDeleted() {
       :movies="moviesStore.movies"
       :sort-by="moviesStore.filters.sortBy"
       :sort-dir="moviesStore.filters.sortDir"
+      :selected-ids="moviesStore.selectedIds"
       @sort="moviesStore.toggleSort"
       @select="onSelectMovie"
+      @toggle-select="moviesStore.toggleSelected"
+      @toggle-select-visible="moviesStore.setVisibleSelected"
     />
 
     <MovieDetailDialog
@@ -182,6 +217,14 @@ async function onMovieDeleted() {
       :movie-id="formMovieId"
       @close="closeForm"
       @saved="onFormSaved"
+    />
+    <CompareDialog
+      v-if="comparing"
+      :key="moviesStore.selectedIds.join(',')"
+      :movie-ids="moviesStore.selectedIds"
+      @close="comparing = false"
+      @remove="removeFromComparison"
+      @watched="onComparedWatched"
     />
   </div>
 </template>
@@ -199,6 +242,14 @@ async function onMovieDeleted() {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.library-view__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: -4px;
 }
 
 .library-view__search {
@@ -225,6 +276,25 @@ async function onMovieDeleted() {
 .library-view__clear:hover {
   color: #e7e9ee;
   background: #2d2f37;
+}
+
+.library-view__compare {
+  background: #3a3d47;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.library-view__compare:hover:not(:disabled) {
+  background: #454854;
+}
+
+.library-view__compare:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .library-view__add {

@@ -11,7 +11,12 @@ function onDocumentClick(event) {
   if (root.value && !root.value.contains(event.target)) open.value = false
 }
 
-onMounted(() => document.addEventListener('click', onDocumentClick))
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+  // Loads its own genres: this now lives in the app nav, so it is mounted on
+  // every view, including ones that never fetch the genre list themselves.
+  if (!genresStore.genres.length) genresStore.fetch()
+})
 onUnmounted(() => document.removeEventListener('click', onDocumentClick))
 
 async function addGenre() {
@@ -75,7 +80,10 @@ async function removeGenre(name) {
 .genre-manager__panel {
   position: absolute;
   top: calc(100% + 4px);
-  left: 0;
+  /* Anchored to the right: the trigger sits at the right end of the nav, so
+     a left-anchored panel runs off the window and forces a horizontal
+     scrollbar. */
+  right: 0;
   z-index: 10;
   width: 280px;
   background: #24262d;
