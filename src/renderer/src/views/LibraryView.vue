@@ -44,9 +44,12 @@ const genreOptions = computed(() => genresStore.genres.map((g) => ({ value: g.id
 const collectionOptions = computed(() => collectionsStore.collections.map((c) => ({ value: c.id, label: c.name })))
 const ratedOptions = computed(() => moviesStore.ratedOptions.map((r) => ({ value: r, label: r })))
 
+// Newest decade first, so recent films are reachable without scrolling.
+// Runs one decade past the current one rather than stopping at it, so the
+// list still covers new releases as soon as the calendar rolls over.
 const currentDecadeStart = Math.floor(new Date().getFullYear() / 10) * 10
 const decadeOptions = []
-for (let decade = 1920; decade <= currentDecadeStart; decade += 10) {
+for (let decade = currentDecadeStart + 10; decade >= 1920; decade -= 10) {
   decadeOptions.push({ value: `${decade}s`, label: `${decade}s` })
 }
 
