@@ -7,6 +7,7 @@ import {
   setActorsForMovie
 } from './actors.repo'
 import { listGenresForMovie, setGenresForMovie } from './genres.repo'
+import { getSetting } from './settings.repo'
 import {
   listCollectionsForMovie,
   findOrCreateCollection,
@@ -20,7 +21,8 @@ const SORTABLE_COLUMNS = {
   imdb_rating: 'm.imdb_rating',
   runtime_minutes: 'm.runtime_minutes',
   resolution: 'm.width * m.height',
-  last_watched_at: 'm.last_watched_at'
+  last_watched_at: 'm.last_watched_at',
+  created_at: 'm.created_at'
 }
 
 const RATING_BUCKETS = {
@@ -33,6 +35,21 @@ const RATING_BUCKETS = {
 
 function escapeFtsPhrase(search) {
   return `"${search.replace(/"/g, '""')}"`
+}
+
+// A scan spans minutes and stamps each row with its own datetime('now'), so
+// there is no batch boundary in the data to find - runScan records when it
+// started instead, and everything at or after that mark is "the latest import".
+// Manual adds made since then are included too, which is what you want when the
+// point is to eyeball whatever arrived most recently.
+function latestImportThreshold(db) {
+  const recorded = getSetting(db, 'last_scan_started_at')
+  if (recorded) return recorded
+
+  // A library imported before this setting existed has no mark. Fall back to
+  // everything within six hours of the newest row, which in practice is one
+  // import session.
+  return db.prepare("SELECT datetime(MAX(created_at), '-6 hours') AS t FROM movies").get()?.t ?? null
 }
 
 // Keeps the movies_fts index in sync with a movie's current title/actor names.
@@ -53,8 +70,18 @@ export function syncFtsForMovie(db, movieId) {
 }
 
 export function listMovies(db, filters = {}) {
-  const { search, genreIds, decades, ratingBuckets, ratedValues, collectionIds, watched, sortBy, sortDir } =
-    filters
+  const {
+    search,
+    genreIds,
+    decades,
+    ratingBuckets,
+    ratedValues,
+    collectionIds,
+    watched,
+    latestImportOnly,
+    sortBy,
+    sortDir
+  } = filters
 
   const where = []
   const params = []
@@ -108,6 +135,15 @@ export function listMovies(db, filters = {}) {
 
   if (watched === true) where.push('m.last_watched_at IS NOT NULL')
   if (watched === false) where.push('m.last_watched_at IS NULL')
+
+  if (latestImportOnly) {
+    // Null only on an empty library, where the clause would have nothing to do.
+    const threshold = latestImportThreshold(db)
+    if (threshold) {
+      where.push('m.created_at >= ?')
+      params.push(threshold)
+    }
+  }
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
 

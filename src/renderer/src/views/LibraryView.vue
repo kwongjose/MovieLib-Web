@@ -158,6 +158,16 @@ async function onComparedWatched() {
         :model-value="moviesStore.filters.collectionIds"
         @update:model-value="moviesStore.setCollectionIds"
       />
+      <!-- Narrows to whatever arrived in the most recent scan, so a fresh
+           import can be checked over before it disappears into the library. -->
+      <button
+        class="library-view__clear"
+        :class="{ 'library-view__clear--active': moviesStore.filters.latestImportOnly }"
+        title="Show only the movies from the most recent import"
+        @click="moviesStore.toggleLatestImport"
+      >
+        Latest Import
+      </button>
       <button class="library-view__clear" @click="moviesStore.clearFilters">Show All</button>
     </div>
 
@@ -190,6 +200,13 @@ async function onComparedWatched() {
         {{ scanStore.scanning ? 'Scanning…' : 'Scan for New Movies' }}
       </button>
     </div>
+
+    <!-- Its own v-if, deliberately not part of the chain below - an else-if
+         here would hide the table it is describing. -->
+    <p v-if="moviesStore.filters.latestImportOnly" class="library-view__status">
+      Showing {{ moviesStore.movies.length }} movie(s) from the latest import, oldest first -
+      the newest additions are at the bottom.
+    </p>
 
     <p v-if="moviesStore.loading" class="library-view__status">Loading…</p>
     <p v-else-if="moviesStore.error" class="library-view__status library-view__status--error">
@@ -279,6 +296,12 @@ async function onComparedWatched() {
 .library-view__clear:hover {
   color: #e7e9ee;
   background: #2d2f37;
+}
+
+/* Same "this filter is on" treatment the multi-select dropdowns use. */
+.library-view__clear--active {
+  border-color: #6c7bff;
+  color: #bfc6ff;
 }
 
 .library-view__compare {

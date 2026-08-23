@@ -12,6 +12,7 @@ function defaultFilters() {
     ratedValues: [],
     collectionIds: [],
     watched: null,
+    latestImportOnly: false,
     sortBy: 'title',
     sortDir: 'asc'
   }
@@ -74,6 +75,17 @@ export const useMoviesStore = defineStore('movies', {
     },
     setCollectionIds(ids) {
       this.filters.collectionIds = ids
+      this.fetch()
+    },
+    // Turning it on also switches to import order, oldest first, so the newest
+    // arrivals sit at the bottom of the table - the original app's arrangement,
+    // and the one that makes a fresh import easy to read down. Turning it off
+    // restores the default title sort rather than leaving the grid ordered by a
+    // column that isn't shown.
+    toggleLatestImport() {
+      this.filters.latestImportOnly = !this.filters.latestImportOnly
+      this.filters.sortBy = this.filters.latestImportOnly ? 'created_at' : 'title'
+      this.filters.sortDir = 'asc'
       this.fetch()
     },
     setWatched(watched) {

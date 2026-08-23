@@ -18,12 +18,18 @@ before are processed, so re-scanning after adding a few films is quick.
 **Browse** — sort by title, year, certificate, IMDb rating, runtime, resolution or
 watched date. Filter by genre, decade, certificate, rating band and collection.
 Full-text search covers titles *and* cast, using a trigram index so partial words match.
+**Latest Import** narrows the grid to whatever the most recent scan brought in, in import
+order with the newest at the bottom, so a fresh batch can be checked over before it
+disappears into the library.
 
 **Organise** — group films into collections, manage your own genre list, mark films
 watched, and launch them in your default player.
 
 **Maintain** — find duplicates, find files on disk that were never imported, clean up
-entries whose files have gone missing, or reset the library entirely.
+entries whose files have gone missing, or reset the library entirely. Because every import
+links its TMDB franchise, most collections end up holding one or two films — so collections
+below a size you choose can be deleted in bulk, or cleared out altogether. Neither touches
+a movie.
 
 ### Details, and trailers
 

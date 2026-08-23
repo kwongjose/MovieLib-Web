@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import CollectionPicker from './CollectionPicker.vue'
+import CollectionChipList from './CollectionChipList.vue'
 import { useTrailerStore } from '../stores/trailer'
 
 const props = defineProps({
@@ -92,7 +92,8 @@ async function deleteMovie() {
 
           <div class="detail__collections">
             <strong>Collections:</strong>
-            <CollectionPicker :movie-id="movie.id" :selected-collections="movie.collections" @changed="load" />
+            <!-- View and unlink only. Adding lives in the Edit dialog. -->
+            <CollectionChipList :movie-id="movie.id" :collections="movie.collections" @changed="load" />
           </div>
 
           <div class="detail__actions">

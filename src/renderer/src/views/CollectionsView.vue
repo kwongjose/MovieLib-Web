@@ -91,6 +91,9 @@ async function onMovieDeleted() {
           :class="{ 'collections-view__item--active': activeCollectionId === collection.id }"
         >
           <span class="collections-view__item-name" @click="openCollection(collection.id)">{{ collection.name }}</span>
+          <!-- The count is what makes the franchise clutter visible: a list full
+               of (1)s is the cue to use Maintenance -> Collections. -->
+          <span class="collections-view__item-count">{{ collection.movie_count }}</span>
           <button class="collections-view__item-remove" @click="deleteCollection(collection.id)">×</button>
         </li>
         <li v-if="!collectionsStore.collections.length" class="collections-view__empty">
@@ -189,6 +192,12 @@ async function onMovieDeleted() {
   cursor: pointer;
   font-size: 13px;
   flex: 1;
+}
+
+.collections-view__item-count {
+  font-size: 11px;
+  color: #6c7280;
+  padding: 0 6px;
 }
 
 .collections-view__item-remove {

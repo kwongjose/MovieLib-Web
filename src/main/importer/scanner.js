@@ -4,7 +4,7 @@ import { getDb } from '../db'
 import { existingPaths, createMovie } from '../db/movies.repo'
 import { listFolders } from '../db/folders.repo'
 import { listKeyValues } from '../db/omdbKeys.repo'
-import { getTmdbKey } from '../db/settings.repo'
+import { getTmdbKey, setSetting } from '../db/settings.repo'
 import { createKeyPool } from './keyPool'
 import { parseFilename } from './parseFilename'
 import { TmdbAuthError, TmdbNetworkError } from './tmdbClient'
@@ -134,6 +134,13 @@ export async function runScan(onProgress) {
 
   const folders = listFolders(db)
   if (!folders.length) throw new Error('Add at least one library folder in Settings before scanning.')
+
+  // Marks the boundary the Library's "Latest Import" filter reads back. Taken
+  // from SQLite rather than JS: created_at is written as 'YYYY-MM-DD HH:MM:SS'
+  // by datetime('now'), and an ISO string with its 'T' and 'Z' would not
+  // string-compare against that. Written only after the checks above pass, so a
+  // scan that refuses to start doesn't move the mark.
+  setSetting(db, 'last_scan_started_at', db.prepare("SELECT datetime('now') AS t").get().t)
 
   // No longer fatal when empty: without an OMDb key every film simply imports
   // with no IMDb rating, which beats refusing to import anything at all.

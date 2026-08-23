@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useGenresStore } from '../stores/genres'
 import MultiSelectDropdown from './MultiSelectDropdown.vue'
 import ActorChipList from './ActorChipList.vue'
+import CollectionChipList from './CollectionChipList.vue'
 
 const props = defineProps({
   mode: { type: String, required: true }, // 'add' | 'edit'
@@ -21,6 +22,7 @@ const imdbIdInput = ref('')
 const pathInput = ref('')
 const genreIds = ref([])
 const actors = ref([]) // [{ id?, name }]
+const collections = ref([]) // [{ id, name }] - edit mode only, written on click
 const saving = ref(false)
 const loading = ref(isEdit.value)
 const error = ref(null)
@@ -50,9 +52,17 @@ onMounted(async () => {
     pathInput.value = movie.path
     genreIds.value = movie.genres.map((g) => g.id)
     actors.value = [...movie.actors]
+    collections.value = [...movie.collections]
     loading.value = false
   }
 })
+
+// Collection links are written the moment they change, like the cast above -
+// so they survive Cancel, and there is no collection state for save() to send.
+async function refreshCollections() {
+  const movie = await window.api.movies.getById(props.movieId)
+  collections.value = [...movie.collections]
+}
 
 function genreNamesFromIds(ids) {
   const byId = new Map(genresStore.genres.map((g) => [g.id, g.name]))
@@ -206,6 +216,16 @@ async function save() {
           <div class="form__field">
             <span>Cast</span>
             <ActorChipList :actors="actors" @add="addActor" @remove="removeActor" />
+          </div>
+          <!-- Edit only: a film has no id to link a collection to until it is saved. -->
+          <div v-if="isEdit" class="form__field">
+            <span>Collections</span>
+            <CollectionChipList
+              :movie-id="movieId"
+              :collections="collections"
+              allow-add
+              @changed="refreshCollections"
+            />
           </div>
         </template>
 

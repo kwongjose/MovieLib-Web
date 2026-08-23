@@ -3,10 +3,14 @@ import { getDb } from '../db'
 import {
   listCollections,
   createCollection,
+  findOrCreateCollection,
   renameCollection,
   deleteCollection,
   addMovieToCollection,
-  removeMovieFromCollection
+  removeMovieFromCollection,
+  countSmallCollections,
+  deleteSmallCollections,
+  deleteAllCollections
 } from '../db/collections.repo'
 import { listMovies } from '../db/movies.repo'
 
@@ -32,7 +36,24 @@ export function registerCollectionsIpc() {
     removeMovieFromCollection(getDb(), collectionId, movieId)
     return { ok: true }
   })
+  // One channel rather than create-then-link from the renderer: `collections`
+  // is UNIQUE COLLATE NOCASE, so a two-step add would throw on any name that
+  // already exists in a different case. findOrCreateCollection is the same pair
+  // the importer links franchises with.
+  ipcMain.handle('collections:addMovieByName', (_e, name, movieId) => {
+    const db = getDb()
+    const collectionId = findOrCreateCollection(db, name)
+    if (!collectionId) return null
+    addMovieToCollection(db, collectionId, movieId)
+    return { id: collectionId, name: name.trim() }
+  })
   ipcMain.handle('collections:getMovies', (_e, collectionId) =>
     listMovies(getDb(), { collectionIds: [collectionId] })
   )
+
+  ipcMain.handle('collections:countSmall', (_e, minMovies) => countSmallCollections(getDb(), minMovies))
+  ipcMain.handle('collections:deleteSmall', (_e, minMovies) => ({
+    deletedCount: deleteSmallCollections(getDb(), minMovies)
+  }))
+  ipcMain.handle('collections:clearAll', () => ({ deletedCount: deleteAllCollections(getDb()) }))
 }
