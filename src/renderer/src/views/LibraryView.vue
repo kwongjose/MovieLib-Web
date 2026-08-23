@@ -10,6 +10,7 @@ import MovieTable from '../components/MovieTable.vue'
 import MovieDetailDialog from '../components/MovieDetailDialog.vue'
 import MovieFormDialog from '../components/MovieFormDialog.vue'
 import CompareDialog from '../components/CompareDialog.vue'
+import BulkCollectionDialog from '../components/BulkCollectionDialog.vue'
 
 const moviesStore = useMoviesStore()
 const genresStore = useGenresStore()
@@ -107,6 +108,14 @@ async function onMovieDeleted() {
 }
 
 const comparing = ref(false)
+const bulkCollections = ref(false)
+
+// The Collection filter may be active, in which case the grid still shows films
+// that were just removed from the collection it is filtered to. Same staleness
+// MaintenanceView guards against after a bulk collection delete.
+async function onBulkCollectionsChanged() {
+  await moviesStore.fetch()
+}
 
 function removeFromComparison(id) {
   moviesStore.toggleSelected(id)
@@ -190,6 +199,14 @@ async function onComparedWatched() {
       >
         Clear Selection
       </button>
+      <button
+        class="library-view__compare"
+        :disabled="!moviesStore.selectedIds.length"
+        :title="!moviesStore.selectedIds.length ? 'Tick the movies you want to file' : ''"
+        @click="bulkCollections = true"
+      >
+        Add to Collection<span v-if="moviesStore.selectedIds.length"> ({{ moviesStore.selectedIds.length }})</span>
+      </button>
       <button class="library-view__add" @click="openAddForm">+ Add Movie</button>
       <button
         class="library-view__scan"
@@ -237,6 +254,12 @@ async function onComparedWatched() {
       :movie-id="formMovieId"
       @close="closeForm"
       @saved="onFormSaved"
+    />
+    <BulkCollectionDialog
+      v-if="bulkCollections"
+      :movie-ids="moviesStore.selectedIds"
+      @close="bulkCollections = false"
+      @changed="onBulkCollectionsChanged"
     />
     <CompareDialog
       v-if="comparing"

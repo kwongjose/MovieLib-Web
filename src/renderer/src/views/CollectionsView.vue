@@ -10,17 +10,62 @@ const newCollectionName = ref('')
 const activeCollectionId = ref(null)
 const activeMovies = ref([])
 
+const renamingId = ref(null)
+const renameDraft = ref('')
+const createError = ref('')
+const notice = ref('')
+
 const selectedMovieId = ref(null)
 const formMode = ref(null)
 const formMovieId = ref(null)
 
 onMounted(() => collectionsStore.fetch())
 
+// createCollection is a bare INSERT against a UNIQUE COLLATE NOCASE column, so
+// a duplicate rejects. Suffix-stripping makes that newly reachable - typing
+// "Thor Collection" when "Thor" exists is now the same name - so the rejection
+// has to surface instead of becoming an unhandled promise.
 async function createCollection() {
   const name = newCollectionName.value.trim()
   if (!name) return
-  await collectionsStore.create(name)
-  newCollectionName.value = ''
+  createError.value = ''
+  try {
+    await collectionsStore.create(name)
+    newCollectionName.value = ''
+  } catch {
+    createError.value = `A collection called "${normalizeName(name)}" already exists.`
+  }
+}
+
+// Mirrors the main-process normalizeCollectionName so the error message names
+// the collection the user will actually find in the list.
+function normalizeName(name) {
+  return name.trim().replace(/\s+collections?$/i, '').trim() || name.trim()
+}
+
+function startRename(collection) {
+  renamingId.value = collection.id
+  renameDraft.value = collection.name
+  notice.value = ''
+}
+
+function cancelRename() {
+  renamingId.value = null
+  renameDraft.value = ''
+}
+
+// A rename onto an existing name merges the two rather than failing, so the id
+// being edited may not survive - drop the open collection if it was the one
+// that got absorbed.
+async function commitRename(id) {
+  const name = renameDraft.value.trim()
+  if (!name) return cancelRename()
+  const result = await collectionsStore.rename(id, name)
+  cancelRename()
+  if (result?.merged) {
+    notice.value = `Merged into "${result.name}".`
+    if (activeCollectionId.value === id) await openCollection(result.id)
+  }
 }
 
 async function openCollection(id) {
@@ -83,6 +128,8 @@ async function onMovieDeleted() {
         />
         <button @click="createCollection">Create</button>
       </div>
+      <p v-if="createError" class="collections-view__error">{{ createError }}</p>
+      <p v-if="notice" class="collections-view__notice">{{ notice }}</p>
       <ul class="collections-view__list">
         <li
           v-for="collection in collectionsStore.collections"
@@ -90,7 +137,25 @@ async function onMovieDeleted() {
           class="collections-view__item"
           :class="{ 'collections-view__item--active': activeCollectionId === collection.id }"
         >
-          <span class="collections-view__item-name" @click="openCollection(collection.id)">{{ collection.name }}</span>
+          <input
+            v-if="renamingId === collection.id"
+            v-model="renameDraft"
+            type="text"
+            class="collections-view__rename"
+            @keyup.enter="commitRename(collection.id)"
+            @keyup.esc="cancelRename"
+            @blur="cancelRename"
+          />
+          <!-- Double-click to rename: a single click already opens the
+               collection, which is by far the more common action. -->
+          <span
+            v-else
+            class="collections-view__item-name"
+            title="Double-click to rename"
+            @click="openCollection(collection.id)"
+            @dblclick="startRename(collection)"
+            >{{ collection.name }}</span
+          >
           <!-- The count is what makes the franchise clutter visible: a list full
                of (1)s is the cue to use Maintenance -> Collections. -->
           <span class="collections-view__item-count">{{ collection.movie_count }}</span>
@@ -192,6 +257,32 @@ async function onMovieDeleted() {
   cursor: pointer;
   font-size: 13px;
   flex: 1;
+}
+
+/* Sized to sit in the same row as the name it replaces, so renaming does not
+   reflow the sidebar. */
+.collections-view__rename {
+  flex: 1;
+  min-width: 0;
+  background: #1b1d22;
+  border: 1px solid #6c7bff;
+  color: #e7e9ee;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.collections-view__error {
+  color: #e08a8a;
+  font-size: 12px;
+  margin: -6px 0 12px;
+}
+
+.collections-view__notice {
+  color: #bfc6ff;
+  font-size: 12px;
+  margin: -6px 0 12px;
 }
 
 .collections-view__item-count {

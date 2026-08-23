@@ -41,6 +41,10 @@ const api = {
     addMovie: (collectionId, movieId) => ipcRenderer.invoke('collections:addMovie', collectionId, movieId),
     removeMovie: (collectionId, movieId) => ipcRenderer.invoke('collections:removeMovie', collectionId, movieId),
     addMovieByName: (name, movieId) => ipcRenderer.invoke('collections:addMovieByName', name, movieId),
+    addMoviesByName: (name, movieIds) => ipcRenderer.invoke('collections:addMoviesByName', name, movieIds),
+    removeMovies: (collectionId, movieIds) =>
+      ipcRenderer.invoke('collections:removeMovies', collectionId, movieIds),
+    listForMovies: (movieIds) => ipcRenderer.invoke('collections:listForMovies', movieIds),
     getMovies: (collectionId) => ipcRenderer.invoke('collections:getMovies', collectionId),
     countSmall: (minMovies) => ipcRenderer.invoke('collections:countSmall', minMovies),
     deleteSmall: (minMovies) => ipcRenderer.invoke('collections:deleteSmall', minMovies),

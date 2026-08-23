@@ -11,9 +11,12 @@ export const useCollectionsStore = defineStore('collections', {
       await this.fetch()
       return created
     },
+    // Returns { id, name, merged } - a rename onto an existing name merges the
+    // two, so the caller may be holding a collection id that no longer exists.
     async rename(id, name) {
-      await window.api.collections.rename(id, name)
+      const result = await window.api.collections.rename(id, name)
       await this.fetch()
+      return result
     },
     async remove(id) {
       await window.api.collections.delete(id)
@@ -34,6 +37,19 @@ export const useCollectionsStore = defineStore('collections', {
       const linked = await window.api.collections.addMovieByName(name, movieId)
       await this.fetch()
       return linked
+    },
+    // The bulk pair. Each does a single fetch() at the end - the whole reason
+    // the batch channels exist, since looping the per-movie actions would cost
+    // one IPC round trip *and* one full list re-fetch per film.
+    async addMoviesByName(name, movieIds) {
+      const linked = await window.api.collections.addMoviesByName(name, movieIds)
+      await this.fetch()
+      return linked
+    },
+    async removeMovies(collectionId, movieIds) {
+      const result = await window.api.collections.removeMovies(collectionId, movieIds)
+      await this.fetch()
+      return result
     },
     async deleteSmall(minMovies) {
       const result = await window.api.collections.deleteSmall(minMovies)

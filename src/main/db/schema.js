@@ -1,3 +1,5 @@
+import { migrateCollectionNameSuffix } from './collections.repo'
+
 const DEFAULT_GENRES = [
   'Action',
   'Animation',
@@ -140,6 +142,8 @@ export function applySchema(db) {
   db.exec(CREATE_STATEMENTS)
   seedGenres(db)
   migrateSingleApiKey(db)
+  // After CREATE_STATEMENTS - the collections table has to exist first.
+  migrateCollectionNameSuffix(db)
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION)
 }
 
