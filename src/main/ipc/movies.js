@@ -8,6 +8,7 @@ import { fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from '../importer/om
 import { fetchTmdbRecord, mergeOmdbFallbacks, imdbIdLookup } from '../importer/buildMovie'
 import { backfillRatings } from '../importer/backfillRatings'
 import { probeResolution } from '../importer/probeVideo'
+import { auditMovies } from '../importer/matchAudit'
 
 function requireTmdbKey(db) {
   const key = getTmdbKey(db)
@@ -95,6 +96,11 @@ export function registerMoviesIpc() {
 
   ipcMain.handle('movies:listRatedValues', () => moviesRepo.listRatedValues(getDb()))
   ipcMain.handle('movies:findDuplicates', () => moviesRepo.findDuplicateMovies(getDb()))
+  // Pure comparison over rows already in the database - no TMDB call, so this
+  // stays synchronous and needs no progress channel, unlike backfillRatings.
+  ipcMain.handle('movies:auditMatches', (_e, options) =>
+    auditMovies(moviesRepo.listMoviesForMatchAudit(getDb()), options)
+  )
   ipcMain.handle('movies:countMissingRatings', () => moviesRepo.countMoviesMissingRating(getDb()))
 
   // A re-scan never revisits an imported file, so films that missed their rating

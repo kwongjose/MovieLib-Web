@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useCollectionsStore } from '../stores/collections'
 import { useMoviesStore } from '../stores/movies'
+import MovieFormDialog from '../components/MovieFormDialog.vue'
 
 const collectionsStore = useCollectionsStore()
 const moviesStore = useMoviesStore()
@@ -17,13 +18,22 @@ const duplicates = ref(null)
 const notImported = ref(null)
 const cleanupResult = ref(null)
 const resetDone = ref(false)
-const loading = ref(null) // 'duplicates' | 'notImported' | 'cleanup' | 'ratings' | 'collections' | null
+const loading = ref(null) // 'duplicates' | 'notImported' | 'cleanup' | 'ratings' | 'collections' | 'suspect' | null
 
 const missingRatings = ref(null)
 const ratingProgress = ref(null)
 const ratingResult = ref(null)
 const ratingError = ref('')
 let unsubscribeRatings = null
+
+// Filename-vs-metadata audit. Runs offline over rows already in the database, so
+// there is no progress channel to subscribe to - it returns in one go.
+const suspectThreshold = ref(25)
+const suspects = ref(null)
+const rematchIds = ref({})
+const rematchBusy = ref(null)
+const rematchError = ref('')
+const editingId = ref(null)
 
 onMounted(async () => {
   missingRatings.value = await window.api.movies.countMissingRatings()
@@ -94,6 +104,56 @@ async function fetchMissingRatings() {
   }
 }
 
+async function findSuspectMatches() {
+  loading.value = 'suspect'
+  rematchError.value = ''
+  try {
+    suspects.value = await window.api.movies.auditMatches({
+      minScore: Number(suspectThreshold.value)
+    })
+    // A filename carrying an IMDb id already names the film that was meant, so
+    // the re-match box starts filled in and the row needs one click, not a
+    // lookup somewhere else.
+    rematchIds.value = Object.fromEntries(
+      suspects.value.flagged.map((row) => [row.id, row.imdbIdFromFilename || ''])
+    )
+  } finally {
+    loading.value = null
+  }
+}
+
+// Refetching with the row's *stored* imdb_id would just download the same wrong
+// film again, so the correct id has to come from the user (or from the filename).
+async function rematch(row) {
+  const imdbId = (rematchIds.value[row.id] || '').trim()
+  if (!imdbId) return
+  rematchBusy.value = row.id
+  rematchError.value = ''
+  try {
+    await window.api.movies.refetchFromTmdb(row.id, imdbId)
+    await moviesStore.fetch()
+    await findSuspectMatches()
+  } catch (error) {
+    rematchError.value = `${row.title}: ${error.message}`
+  } finally {
+    rematchBusy.value = null
+  }
+}
+
+async function onSuspectSaved() {
+  editingId.value = null
+  await moviesStore.fetch()
+  await findSuspectMatches()
+}
+
+function showFile(path) {
+  window.api.system.openContainingFolder(path)
+}
+
+function fileNameOf(path) {
+  return path.split(/[\\/]/).pop()
+}
+
 async function findDuplicates() {
   loading.value = 'duplicates'
   duplicates.value = await window.api.movies.findDuplicates()
@@ -122,6 +182,7 @@ async function resetLibrary() {
   duplicates.value = null
   notImported.value = null
   cleanupResult.value = null
+  suspects.value = null
   resetDone.value = true
   setTimeout(() => (resetDone.value = false), 3000)
 }
@@ -129,6 +190,82 @@ async function resetLibrary() {
 
 <template>
   <div class="maintenance-view">
+    <section class="maintenance-view__section">
+      <h2>Suspect Matches</h2>
+      <p class="maintenance-view__hint">
+        A scan picks the best-scoring TMDB result for each filename and never records how
+        close the call was, so a wrong pick still arrives with a poster, a plot and a cast -
+        nothing about the row looks broken afterwards. This re-reads each film's filename and
+        reports the ones that no longer agree with the metadata stored against them. It runs
+        entirely offline, and changes nothing until you act on a row.
+      </p>
+      <p class="maintenance-view__hint">
+        It can only compare the two: a file that was misnamed before it was imported will
+        agree with its own bad metadata and stay quiet. Alternate release titles and TV
+        episodes filed as movies show up here too, and are usually fine as they are.
+      </p>
+
+      <div class="maintenance-view__inline">
+        <label class="maintenance-view__threshold">
+          Report anything scoring
+          <input v-model.number="suspectThreshold" type="number" min="5" max="200" step="5" />
+          or worse
+        </label>
+        <button :disabled="loading === 'suspect'" @click="findSuspectMatches">
+          {{ loading === 'suspect' ? 'Checking…' : 'Check Metadata' }}
+        </button>
+      </div>
+
+      <p v-if="rematchError" class="maintenance-view__error">{{ rematchError }}</p>
+
+      <template v-if="suspects">
+        <p class="maintenance-view__result">
+          Checked {{ suspects.scanned }} film(s) - {{ suspects.flagged.length }} worth a look.
+          <span v-if="suspects.unjudgeable">
+            {{ suspects.unjudgeable }} skipped, because the filename says too little to judge by.
+          </span>
+        </p>
+
+        <ul class="suspects">
+          <li v-for="row in suspects.flagged" :key="row.id" class="suspect">
+            <div class="suspect__head">
+              <span class="suspect__pill" :class="'suspect__pill--' + row.severity">
+                {{ row.severity }}
+              </span>
+              <strong>{{ row.title }}</strong>
+              <span class="suspect__year">({{ row.year || 'no year' }})</span>
+            </div>
+
+            <code class="suspect__file">{{ fileNameOf(row.path) }}</code>
+
+            <ul class="suspect__reasons">
+              <li v-for="reason in row.reasons" :key="reason">{{ reason }}</li>
+            </ul>
+
+            <div class="suspect__actions">
+              <input
+                v-model="rematchIds[row.id]"
+                class="suspect__imdb"
+                placeholder="tt0111161"
+                spellcheck="false"
+              />
+              <button
+                :disabled="rematchBusy === row.id || !rematchIds[row.id]"
+                @click="rematch(row)"
+              >
+                {{ rematchBusy === row.id ? 'Fetching…' : 'Re-match' }}
+              </button>
+              <button @click="editingId = row.id">Edit</button>
+              <button @click="showFile(row.path)">Show File</button>
+            </div>
+          </li>
+          <li v-if="!suspects.flagged.length" class="maintenance-view__empty">
+            Nothing stands out - every filename agrees with the metadata stored against it.
+          </li>
+        </ul>
+      </template>
+    </section>
+
     <section class="maintenance-view__section">
       <h2>Duplicates</h2>
       <p class="maintenance-view__hint">Movies that share the same title and year.</p>
@@ -257,6 +394,14 @@ async function resetLibrary() {
       <button class="maintenance-view__reset" @click="resetLibrary">Reset Library</button>
       <p v-if="resetDone" class="maintenance-view__result">Library reset.</p>
     </section>
+
+    <MovieFormDialog
+      v-if="editingId"
+      mode="edit"
+      :movie-id="editingId"
+      @close="editingId = null"
+      @saved="onSuspectSaved"
+    />
   </div>
 </template>
 
@@ -368,5 +513,92 @@ async function resetLibrary() {
 
 .maintenance-view__reset:hover {
   background: #3a2a2a !important;
+}
+
+/* Suspect Matches. Taller rows than the other lists here, because each one has
+   to show the filename and the metadata side by side to make its own case. */
+.suspects {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.suspect {
+  border: 1px solid #2f323a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.suspect__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #e7e9ee;
+  flex-wrap: wrap;
+}
+
+.suspect__year {
+  color: #8a8d97;
+}
+
+.suspect__pill {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.suspect__pill--high {
+  background: #4a2a2a;
+  color: #e08a8a;
+}
+
+.suspect__pill--medium {
+  background: #4a412a;
+  color: #d9c07e;
+}
+
+.suspect__pill--low {
+  background: #3a3d47;
+  color: #a6a9b4;
+}
+
+.suspect__file {
+  display: block;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #a6a9b4;
+  word-break: break-all;
+}
+
+.suspect__reasons {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #c6c8d0;
+}
+
+.suspect__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.suspect__imdb {
+  width: 104px;
+  background: #1b1d22;
+  border: 1px solid #3a3d47;
+  color: #e7e9ee;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  font-family: inherit;
 }
 </style>

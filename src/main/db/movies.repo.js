@@ -333,6 +333,15 @@ export function listRatedValues(db) {
     .map((r) => r.rated)
 }
 
+// Everything the filename-vs-metadata audit needs, in one pass. Kept as a
+// plain select so the comparison itself stays in matchAudit.js, where it can
+// be unit tested without a database.
+export function listMoviesForMatchAudit(db) {
+  return db
+    .prepare('SELECT id, title, year, imdb_id, tmdb_id, path FROM movies ORDER BY title COLLATE NOCASE')
+    .all()
+}
+
 export function findDuplicateMovies(db) {
   // Grouped by tmdb_id first: it is an exact identity, so the same film under
   // two different filenames is caught even when the parsed titles disagree.
