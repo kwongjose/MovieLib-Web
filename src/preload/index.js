@@ -10,6 +10,7 @@ const api = {
     createFromImdbId: (imdbId, path) => ipcRenderer.invoke('movies:createFromImdbId', imdbId, path),
     update: (id, payload) => ipcRenderer.invoke('movies:update', id, payload),
     refetchFromTmdb: (id, imdbId) => ipcRenderer.invoke('movies:refetchFromTmdb', id, imdbId),
+    renameFile: (id, newBaseName) => ipcRenderer.invoke('movies:renameFile', id, newBaseName),
     delete: (id, options) => ipcRenderer.invoke('movies:delete', id, options),
     addActor: (movieId, name) => ipcRenderer.invoke('movies:addActor', movieId, name),
     removeActor: (movieId, actorId) => ipcRenderer.invoke('movies:removeActor', movieId, actorId),

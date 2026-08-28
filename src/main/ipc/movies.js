@@ -1,11 +1,16 @@
 import { ipcMain } from 'electron'
-import { existsSync, unlinkSync } from 'node:fs'
+import { existsSync, unlinkSync, renameSync } from 'node:fs'
+import { basename, dirname, extname, join } from 'node:path'
 import { getDb } from '../db'
 import * as moviesRepo from '../db/movies.repo'
 import { listKeyValues } from '../db/omdbKeys.repo'
 import { getTmdbKey } from '../db/settings.repo'
 import { fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from '../importer/omdbClient'
 import { fetchTmdbRecord, mergeOmdbFallbacks, imdbIdLookup } from '../importer/buildMovie'
+import { parseFilename } from '../importer/parseFilename'
+import { validateBaseName, isCaseOnlyRename, pathTooLong } from '../importer/renameRules'
+import { TmdbNotFoundError } from '../importer/tmdbClient'
+import { isScanning } from './scan'
 import { backfillRatings } from '../importer/backfillRatings'
 import { probeResolution } from '../importer/probeVideo'
 import { auditMovies } from '../importer/matchAudit'
@@ -43,6 +48,77 @@ async function buildFromImdbId(db, imdbId) {
   return mergeOmdbFallbacks(tmdbData, await ratingFromOmdb(db, tmdbData.imdb_id || imdbId))
 }
 
+// The scanner's record for a discovered file, driven by the filename alone -
+// the rename path's refetch. Shared through buildMovie so they cannot diverge.
+async function buildFromPath(db, filePath) {
+  const tmdbData = await fetchTmdbRecord(requireTmdbKey(db), parseFilename(filePath))
+  return mergeOmdbFallbacks(tmdbData, await ratingFromOmdb(db, tmdbData.imdb_id))
+}
+
+// Renames the movie's file on disk in place (same directory, same extension),
+// then refetches metadata from the new name. Same row throughout, so watched
+// state, collections and created_at (the Latest Import marker) all survive.
+//
+// Ordering matters: fs first, DB second (the movies:delete precedent), and
+// once the file has actually been renamed the handler must not reject - a
+// failed metadata refetch comes back as a warning instead.
+async function renameMovieFile(db, id, newBaseName) {
+  const oldPath = moviesRepo.getMoviePath(db, id)
+  if (!oldPath) throw new Error('Movie not found.')
+  if (isScanning()) throw new Error('A scan is running. Wait for it to finish before renaming.')
+
+  const trimmed = String(newBaseName ?? '').trim()
+  const validationError = validateBaseName(trimmed)
+  if (validationError) throw new Error(validationError)
+
+  const oldName = basename(oldPath)
+  const newName = trimmed + extname(oldPath)
+  const targetPath = join(dirname(oldPath), newName)
+  if (pathTooLong(targetPath)) throw new Error('The new name makes the path too long for Windows.')
+
+  if (newName === oldName) return { movie: moviesRepo.getMovieById(db, id), warning: null }
+
+  if (moviesRepo.findMovieIdByPathNocase(db, targetPath, id)) {
+    throw new Error('Another library entry already uses that file name.')
+  }
+  // A case-only rename is legal on Windows, but existsSync(target) would see
+  // the file itself - NTFS fixes the casing in a single rename call.
+  if (!isCaseOnlyRename(oldName, newName) && existsSync(targetPath)) {
+    throw new Error('A file with that name already exists in this folder.')
+  }
+  if (!existsSync(oldPath)) throw new Error('The file no longer exists on disk.')
+
+  try {
+    renameSync(oldPath, targetPath)
+  } catch (error) {
+    if (error.code === 'EBUSY' || error.code === 'EPERM') {
+      throw new Error('The file is in use by another program. Close any player that has it open and try again.')
+    }
+    if (error.code === 'ENOENT') throw new Error('The file no longer exists on disk.')
+    if (error.code === 'EACCES') throw new Error('Windows denied access to rename this file.')
+    throw new Error(`Could not rename the file: ${error.message}`)
+  }
+
+  try {
+    moviesRepo.updateMovie(db, id, { path: targetPath })
+  } catch (error) {
+    // Never leave the DB pointing at a name that no longer exists on disk.
+    renameSync(targetPath, oldPath)
+    throw error
+  }
+
+  let warning = null
+  try {
+    moviesRepo.updateMetadataFields(db, id, await buildFromPath(db, targetPath))
+  } catch (error) {
+    warning =
+      error instanceof TmdbNotFoundError
+        ? 'File renamed, but TMDB found no match for the new name. Metadata was left unchanged.'
+        : `File renamed, but metadata could not be refreshed (${error.message}). Metadata was left unchanged.`
+  }
+  return { movie: moviesRepo.getMovieById(db, id), warning }
+}
+
 function cleanupMissingFiles() {
   const db = getDb()
   const missingIds = moviesRepo
@@ -73,6 +149,8 @@ export function registerMoviesIpc() {
     const db = getDb()
     return moviesRepo.updateMetadataFields(db, id, await buildFromImdbId(db, imdbId))
   })
+
+  ipcMain.handle('movies:renameFile', (_e, id, newBaseName) => renameMovieFile(getDb(), id, newBaseName))
 
   ipcMain.handle('movies:delete', (_e, id, options = {}) => {
     const db = getDb()

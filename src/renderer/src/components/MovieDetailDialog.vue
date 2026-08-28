@@ -1,7 +1,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import CollectionChipList from './CollectionChipList.vue'
+import RenameFileDialog from './RenameFileDialog.vue'
 import { useTrailerStore } from '../stores/trailer'
+import { useMoviesStore } from '../stores/movies'
 
 const props = defineProps({
   movieId: { type: Number, required: true }
@@ -36,6 +38,16 @@ async function watchMovie() {
 
 async function showInFolder() {
   await window.api.system.openContainingFolder(movie.value.path)
+}
+
+const renaming = ref(false)
+
+// Refresh the detail (title/metadata may have changed) and the grid behind
+// it. Deliberately not load(): flipping `loading` unmounts the dialog box and
+// with it the nested RenameFileDialog, which may still be showing a warning.
+async function onRenamed() {
+  movie.value = await window.api.movies.getById(props.movieId)
+  await useMoviesStore().fetch()
 }
 
 async function markWatched() {
@@ -99,6 +111,7 @@ async function deleteMovie() {
           <div class="detail__actions">
             <button @click="watchMovie">Watch Movie</button>
             <button @click="showInFolder">Show in Folder</button>
+            <button @click="renaming = true">Rename File</button>
             <button v-if="!movie.last_watched_at" @click="markWatched">Mark as Watched</button>
             <button v-else @click="clearWatched">Clear Watched</button>
             <button @click="emit('edit', movie.id)">Edit</button>
@@ -106,6 +119,14 @@ async function deleteMovie() {
           </div>
         </div>
       </div>
+
+      <RenameFileDialog
+        v-if="renaming"
+        :movie-id="movie.id"
+        :path="movie.path"
+        @close="renaming = false"
+        @renamed="onRenamed"
+      />
     </div>
   </div>
 </template>
@@ -163,7 +184,7 @@ async function deleteMovie() {
   border: 1px solid #3a3d47;
   border-radius: 10px;
   padding: 24px;
-  width: min(720px, 92vw);
+  width: min(880px, 92vw);
   max-height: 88vh;
   overflow-y: auto;
 }
@@ -190,8 +211,8 @@ async function deleteMovie() {
 }
 
 .detail__poster {
-  width: 180px;
-  height: 266px;
+  width: 220px;
+  height: 330px;
   object-fit: cover;
   border-radius: 6px;
   flex-shrink: 0;
@@ -213,7 +234,7 @@ async function deleteMovie() {
 
 .detail__title {
   margin: 0 0 6px;
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .detail__meta {
@@ -254,7 +275,7 @@ async function deleteMovie() {
 
 .detail__plot {
   margin: 0 0 16px;
-  font-size: 13px;
+  font-size: 14px;
   color: #c6c8d0;
   line-height: 1.5;
 }

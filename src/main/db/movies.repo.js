@@ -309,6 +309,17 @@ export function getMoviePath(db, id) {
   return db.prepare('SELECT path FROM movies WHERE id = ?').get(id)?.path ?? null
 }
 
+// movies.path is UNIQUE but case-sensitive, while Windows filenames are not.
+// The rename pre-check queries case-insensitively so two rows can never end
+// up pointing at one file under two spellings.
+export function findMovieIdByPathNocase(db, path, excludeId) {
+  return (
+    db
+      .prepare('SELECT id FROM movies WHERE path = ? COLLATE NOCASE AND id != ?')
+      .get(normalize(path), excludeId)?.id ?? null
+  )
+}
+
 export function deleteMovie(db, id) {
   db.prepare('DELETE FROM movies_fts WHERE rowid = ?').run(id)
   db.prepare('DELETE FROM movies WHERE id = ?').run(id)

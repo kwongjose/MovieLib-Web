@@ -130,6 +130,10 @@ async function onComparedWatched() {
 
 <template>
   <div class="library-view">
+    <!-- Sticky, so the filters and actions stay reachable while scrolling
+         the table. The status lines below stay outside on purpose: they
+         describe the table and should scroll away with it. -->
+    <div class="library-view__header">
     <div class="library-view__toolbar">
       <input
         type="text"
@@ -217,6 +221,7 @@ async function onComparedWatched() {
         {{ scanStore.scanning ? 'Scanning…' : 'Scan for New Movies' }}
       </button>
     </div>
+    </div>
 
     <!-- Its own v-if, deliberately not part of the chain below - an else-if
          here would hide the table it is describing. -->
@@ -277,7 +282,23 @@ async function onComparedWatched() {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: 100%;
+}
+
+.library-view__header {
+  position: sticky;
+  /* Sticky offsets track the margin box, so the -24px pull-up below has to
+     be mirrored here or rows peek out in a 24px band under the nav. */
+  top: -24px;
+  z-index: 15; /* above table rows; below .app-nav (20) */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #1b1d22;
+  /* Stretch the background across .app-content's 24px gutters so rows
+     can't peek out beside or above the bar while scrolling. */
+  padding: 24px 24px 12px;
+  margin: -24px -24px 0;
+  border-bottom: 1px solid #26282f;
 }
 
 .library-view__toolbar {

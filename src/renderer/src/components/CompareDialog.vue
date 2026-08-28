@@ -129,7 +129,7 @@ async function watchMovie(movie) {
   border: 1px solid #3a3d47;
   border-radius: 10px;
   padding: 20px 24px 24px;
-  width: min(1180px, 94vw);
+  width: min(1400px, 94vw);
   max-height: 88vh;
   display: flex;
   flex-direction: column;
@@ -165,25 +165,27 @@ async function watchMovie(movie) {
   font-size: 13px;
 }
 
-/* Fixed-width columns that scroll sideways rather than squeezing: the
-   point of the view is comparing like against like, which breaks down if
-   the cards reflow to different heights and widths as you add more. */
+/* Cards wrap into rows of up to four (the 1400px dialog cap plus the 280px
+   track minimum works out to four across at full width, three and then two
+   as the window narrows). Grid keeps cards in the same row equal-height, so
+   like still compares against like; extra rows scroll inside the dialog. */
 .compare__grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
-  overflow-x: auto;
+  overflow-y: auto;
+  min-height: 0;
   padding-bottom: 6px;
 }
 
 .card {
   position: relative;
-  flex: 0 0 260px;
   display: flex;
   flex-direction: column;
   background: #1e2027;
   border: 1px solid #33353d;
   border-radius: 8px;
-  padding: 14px;
+  padding: 16px;
 }
 
 .card__remove {
@@ -204,7 +206,7 @@ async function watchMovie(movie) {
 
 .card__title {
   margin: 0 18px 2px 0;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.3;
 }
 
