@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { handle } from './handle'
 import { runScan, findNewFiles } from '../importer/scanner'
 
 let scanning = false
@@ -11,7 +11,7 @@ export function isScanning() {
 }
 
 export function registerScanIpc() {
-  ipcMain.handle('scan:start', async (event) => {
+  handle('scan:start', async (event) => {
     if (scanning) throw new Error('A scan is already running.')
     scanning = true
     const sender = event.sender
@@ -24,5 +24,5 @@ export function registerScanIpc() {
     }
   })
 
-  ipcMain.handle('scan:findNotImported', () => findNewFiles())
+  handle('scan:findNotImported', () => findNewFiles())
 }

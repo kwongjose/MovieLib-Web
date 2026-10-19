@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises'
+import { log, describeError } from '../log'
 import { join, extname } from 'node:path'
 import { getDb } from '../db'
 import { existingPaths, createMovie } from '../db/movies.repo'
@@ -61,8 +62,12 @@ async function discoverVideoFiles(rootDir) {
     let entries
     try {
       entries = await readdir(dir, { withFileTypes: true })
-    } catch {
-      return // folder no longer exists / unreadable - skip it, don't fail the whole scan
+    } catch (error) {
+      // Skipping rather than failing the whole scan, but never silently: an
+      // unreadable watch folder is the single most likely reason a scan
+      // reports finding nothing at all.
+      log.warn('scan', `could not read ${dir}`, describeError(error))
+      return
     }
 
     for (const entry of entries) {
@@ -112,7 +117,12 @@ async function lookupOmdb(pool, movie, failures) {
     } catch (error) {
       const isRateLimit = error instanceof OmdbRateLimitError
       const isInvalid = error instanceof OmdbAuthError
-      if (!isRateLimit && !isInvalid) return null
+      if (!isRateLimit && !isInvalid) {
+        // The client already logged the HTTP failure; this records the
+        // consequence - this film imports without a rating.
+        log.debug('omdb', `no rating for ${movie.title}`, describeError(error))
+        return null
+      }
 
       // Neither a spent key nor a rejected one should strand the others, and
       // marking by key identity - rather than "the current one" - keeps
@@ -152,6 +162,13 @@ export async function runScan(onProgress) {
   const newFiles = await findNewFiles()
   const total = newFiles.length
 
+  // Info level, so a packaged build still answers "did the scan do anything"
+  // without the per-file debug noise.
+  log.info('scan', `scan started: ${total} new file(s)`, {
+    folders: folders.length,
+    omdbKeys: pool.total()
+  })
+
   let processed = 0
   let imported = 0
   let skipped = 0
@@ -177,7 +194,7 @@ export async function runScan(onProgress) {
       flushBuffer(batch)
       imported += batch.length
     } catch (error) {
-      console.warn(`[scan] batch of ${batch.length} failed to write: ${error.message}`)
+      log.error('scan', `batch of ${batch.length} failed to write`, describeError(error))
       skipped += batch.length
     }
   }
@@ -212,7 +229,7 @@ export async function runScan(onProgress) {
           // Always say why a file was skipped. A silent counter here once hid a
           // bug where every healthy response was being rejected, and "N skipped"
           // looked indistinguishable from genuine no-match files.
-          console.warn(`[scan] skipped ${filePath}: ${error.message}`)
+          log.debug('scan', `skipped ${filePath}`, describeError(error))
           skipped += 1
         }
       } finally {
@@ -229,7 +246,7 @@ export async function runScan(onProgress) {
   flush()
 
   const failureReasons = [...keyFailures.values()]
-  return {
+  const summary = {
     total,
     imported,
     skipped,
@@ -239,4 +256,7 @@ export async function runScan(onProgress) {
     keysRateLimited: failureReasons.filter((r) => r === 'rate-limit').length,
     keysInvalid: failureReasons.filter((r) => r === 'invalid').length
   }
+
+  log.info('scan', 'scan finished', summary)
+  return summary
 }

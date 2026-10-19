@@ -1,4 +1,5 @@
 import { migrateCollectionNameSuffix } from './collections.repo'
+import { log } from '../log'
 
 const DEFAULT_GENRES = [
   'Action',
@@ -190,7 +191,7 @@ function resetLegacyMovieTables(db) {
   } finally {
     db.pragma('foreign_keys = ON')
   }
-  console.log('[db] pre-TMDB library detected - movie tables reset; keys, folders and collections kept')
+  log.info('db', 'pre-TMDB library detected - movie tables reset; keys, folders and collections kept')
 }
 
 // The API key used to be a single settings row. Carry any existing one into

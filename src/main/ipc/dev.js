@@ -1,4 +1,5 @@
-import { ipcMain, app } from 'electron'
+import { app } from 'electron'
+import { handle } from './handle'
 import { getDb } from '../db'
 import { createMovie, resetLibrary } from '../db/movies.repo'
 
@@ -87,7 +88,7 @@ const FAKE_MOVIES = [
 export function registerDevIpc() {
   if (app.isPackaged) return
 
-  ipcMain.handle('dev:seedFakeMovies', () => {
+  handle('dev:seedFakeMovies', () => {
     const db = getDb()
     resetLibrary(db)
     for (const movie of FAKE_MOVIES) createMovie(db, movie)

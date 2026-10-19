@@ -2,8 +2,36 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
 import { registerAllIpc } from './ipc'
 import { stopTrailerServer } from './trailerServer'
+import { initLog, log, describeError } from './log'
 
 const isDev = !app.isPackaged
+
+// Verbosity is an environment variable rather than a Settings toggle: a
+// setting would have to be read after getDb() succeeds, and a getDb() failure
+// is exactly the thing worth logging.
+function startLogging() {
+  const level = process.env.MOVIELIB_LOG || (app.isPackaged ? 'info' : 'debug')
+  const logFile = initLog({ dir: join(app.getPath('userData'), 'logs'), level })
+
+  // One banner per run. The UTC offset lives here so individual lines can stay
+  // in plain local time, which is how the reader thinks about "when I clicked".
+  log.info('app', `${app.getName()} ${app.getVersion()} started`, {
+    electron: process.versions.electron,
+    node: process.versions.node,
+    platform: `${process.platform} ${process.arch}`,
+    packaged: app.isPackaged,
+    level,
+    tzOffsetMinutes: -new Date().getTimezoneOffset(),
+    logFile
+  })
+
+  // An unhandled rejection in a scan path currently vanishes without trace in
+  // a packaged build. Note this also changes Node's default behaviour for them
+  // from crashing the process to logging and carrying on.
+  process.on('unhandledRejection', (reason) => {
+    log.error('app', 'unhandled promise rejection', describeError(reason))
+  })
+}
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -52,6 +80,11 @@ if (!gotSingleInstanceLock) {
   })
 
   app.whenReady().then(() => {
+    // First, so anything registered below can log - including failures during
+    // registration itself. Entries from module-evaluation time (probeVideo's
+    // missing-ffprobe check) were buffered and are flushed by this call.
+    startLogging()
+
     registerAllIpc()
     createWindow()
 

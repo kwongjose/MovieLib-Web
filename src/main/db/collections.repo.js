@@ -1,4 +1,5 @@
 // TMDB names every franchise "<X> Collection", so an imported library ends up
+import { log } from '../log'
 // full of names that read as "Thor Collection collection" against a UI that
 // already calls these things collections. Strip the suffix at the write
 // chokepoints instead of at render time, so the stored name is the real one.
@@ -86,7 +87,7 @@ export function migrateCollectionNameSuffix(db) {
     renameCollection(db, row.id, row.name)
     changed += 1
   }
-  if (changed) console.log(`[db] stripped "Collection" suffix from ${changed} collection name(s)`)
+  if (changed) log.info('db', `stripped "Collection" suffix from ${changed} collection name(s)`)
   return changed
 }
 

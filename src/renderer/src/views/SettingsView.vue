@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue'
 import WatchFolderList from '../components/WatchFolderList.vue'
 import OmdbKeyList from '../components/OmdbKeyList.vue'
 import TmdbKeyField from '../components/TmdbKeyField.vue'
@@ -7,6 +8,17 @@ const isDev = import.meta.env.DEV
 
 async function revealDatabaseFile() {
   await window.api.system.revealDatabaseFile()
+}
+
+const logError = ref('')
+
+async function revealLogFile() {
+  logError.value = ''
+  try {
+    await window.api.system.revealLogFile()
+  } catch (error) {
+    logError.value = error.message
+  }
 }
 
 async function seedFakeMovies() {
@@ -53,6 +65,17 @@ async function seedFakeMovies() {
       <button class="settings-view__reveal" @click="revealDatabaseFile">Reveal Database File</button>
     </section>
 
+    <section class="settings-view__section">
+      <h2>Diagnostics</h2>
+      <p class="settings-view__hint">
+        Records what the app was doing when something failed, so a problem can be reported
+        with more than "it didn't work". Contains file paths from your library - never your
+        API keys. Capped at 2 MB, with one previous file kept.
+      </p>
+      <button class="settings-view__reveal" @click="revealLogFile">Reveal Log File</button>
+      <p v-if="logError" class="settings-view__error">{{ logError }}</p>
+    </section>
+
     <section v-if="isDev" class="settings-view__section settings-view__section--dev">
       <h2>Developer</h2>
       <p class="settings-view__hint">Dev-only: seeds fake movies so the library UI can be built before the importer exists.</p>
@@ -97,6 +120,12 @@ async function seedFakeMovies() {
 }
 
 .settings-view__save,
+.settings-view__error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #e08a8a;
+}
+
 .settings-view__reveal {
   background: #3a3d47;
   color: #ffffff;

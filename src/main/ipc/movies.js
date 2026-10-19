@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { handle } from './handle'
 import { existsSync, unlinkSync, renameSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { getDb } from '../db'
@@ -131,12 +131,12 @@ function cleanupMissingFiles() {
 }
 
 export function registerMoviesIpc() {
-  ipcMain.handle('movies:list', (_e, filters) => moviesRepo.listMovies(getDb(), filters))
-  ipcMain.handle('movies:getById', (_e, id) => moviesRepo.getMovieById(getDb(), id))
-  ipcMain.handle('movies:create', (_e, payload) => moviesRepo.createMovie(getDb(), payload))
-  ipcMain.handle('movies:update', (_e, id, payload) => moviesRepo.updateMovie(getDb(), id, payload))
+  handle('movies:list', (_e, filters) => moviesRepo.listMovies(getDb(), filters))
+  handle('movies:getById', (_e, id) => moviesRepo.getMovieById(getDb(), id))
+  handle('movies:create', (_e, payload) => moviesRepo.createMovie(getDb(), payload))
+  handle('movies:update', (_e, id, payload) => moviesRepo.updateMovie(getDb(), id, payload))
 
-  ipcMain.handle('movies:createFromImdbId', async (_e, imdbId, path) => {
+  handle('movies:createFromImdbId', async (_e, imdbId, path) => {
     const db = getDb()
     const movie = await buildFromImdbId(db, imdbId)
     const resolution = await probeResolution(path)
@@ -145,14 +145,20 @@ export function registerMoviesIpc() {
 
   // Refetches fetched-metadata fields only - width/height/resolution_label/path
   // are left untouched (see movies.repo.js updateMetadataFields).
-  ipcMain.handle('movies:refetchFromTmdb', async (_e, id, imdbId) => {
+  handle('movies:refetchFromTmdb', async (_e, id, imdbId) => {
     const db = getDb()
+    // Checked before the TMDB round trip, and checked at all because without
+    // it the UPDATE matches zero rows in silence and the first genre link then
+    // trips movie_genres' foreign key - surfacing as "FOREIGN KEY constraint
+    // failed", which names neither the movie nor the real problem. INSERT OR
+    // IGNORE does not suppress a foreign-key violation.
+    if (!moviesRepo.movieExists(db, id)) throw new Error('Movie not found.')
     return moviesRepo.updateMetadataFields(db, id, await buildFromImdbId(db, imdbId))
   })
 
-  ipcMain.handle('movies:renameFile', (_e, id, newBaseName) => renameMovieFile(getDb(), id, newBaseName))
+  handle('movies:renameFile', (_e, id, newBaseName) => renameMovieFile(getDb(), id, newBaseName))
 
-  ipcMain.handle('movies:delete', (_e, id, options = {}) => {
+  handle('movies:delete', (_e, id, options = {}) => {
     const db = getDb()
     if (options.deleteFile) {
       const path = moviesRepo.getMoviePath(db, id)
@@ -162,36 +168,36 @@ export function registerMoviesIpc() {
     return { id }
   })
 
-  ipcMain.handle('movies:addActor', (_e, movieId, name) => moviesRepo.addActorToMovie(getDb(), movieId, name))
-  ipcMain.handle('movies:removeActor', (_e, movieId, actorId) =>
+  handle('movies:addActor', (_e, movieId, name) => moviesRepo.addActorToMovie(getDb(), movieId, name))
+  handle('movies:removeActor', (_e, movieId, actorId) =>
     moviesRepo.removeActorFromMovie(getDb(), movieId, actorId)
   )
 
-  ipcMain.handle('movies:markWatched', (_e, id, options = {}) =>
+  handle('movies:markWatched', (_e, id, options = {}) =>
     moviesRepo.markMovieWatched(getDb(), id, options.date)
   )
-  ipcMain.handle('movies:clearWatched', (_e, id) => moviesRepo.clearMovieWatched(getDb(), id))
+  handle('movies:clearWatched', (_e, id) => moviesRepo.clearMovieWatched(getDb(), id))
 
-  ipcMain.handle('movies:listRatedValues', () => moviesRepo.listRatedValues(getDb()))
-  ipcMain.handle('movies:findDuplicates', () => moviesRepo.findDuplicateMovies(getDb()))
+  handle('movies:listRatedValues', () => moviesRepo.listRatedValues(getDb()))
+  handle('movies:findDuplicates', () => moviesRepo.findDuplicateMovies(getDb()))
   // Pure comparison over rows already in the database - no TMDB call, so this
   // stays synchronous and needs no progress channel, unlike backfillRatings.
-  ipcMain.handle('movies:auditMatches', (_e, options) =>
+  handle('movies:auditMatches', (_e, options) =>
     auditMovies(moviesRepo.listMoviesForMatchAudit(getDb()), options)
   )
-  ipcMain.handle('movies:countMissingRatings', () => moviesRepo.countMoviesMissingRating(getDb()))
+  handle('movies:countMissingRatings', () => moviesRepo.countMoviesMissingRating(getDb()))
 
   // A re-scan never revisits an imported file, so films that missed their rating
   // during a scan can only be filled in here.
-  ipcMain.handle('movies:backfillRatings', async (event) => {
+  handle('movies:backfillRatings', async (event) => {
     const { sender } = event
     return backfillRatings((progress) => {
       if (!sender.isDestroyed()) sender.send('movies:backfillProgress', progress)
     })
   })
 
-  ipcMain.handle('movies:cleanupMissingFiles', () => cleanupMissingFiles())
-  ipcMain.handle('movies:resetLibrary', () => {
+  handle('movies:cleanupMissingFiles', () => cleanupMissingFiles())
+  handle('movies:resetLibrary', () => {
     moviesRepo.resetLibrary(getDb())
     return { ok: true }
   })

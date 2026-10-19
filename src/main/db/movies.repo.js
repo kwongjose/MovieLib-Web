@@ -305,6 +305,12 @@ export function clearMovieWatched(db, id) {
   return getMovieById(db, id)
 }
 
+// Cheaper than getMovieById, which joins actors, genres and collections, and
+// says what the caller actually means.
+export function movieExists(db, id) {
+  return !!db.prepare('SELECT 1 FROM movies WHERE id = ?').get(id)
+}
+
 export function getMoviePath(db, id) {
   return db.prepare('SELECT path FROM movies WHERE id = ?').get(id)?.path ?? null
 }

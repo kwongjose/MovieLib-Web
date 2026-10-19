@@ -1,4 +1,6 @@
 import { net } from 'electron'
+import { log, describeError } from '../log'
+import { redactUrl } from '../log/redact'
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 
@@ -74,7 +76,7 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function callTmdb(credential, path, params = {}) {
+async function callTmdbRaw(credential, path, params, context) {
   const query = new URLSearchParams({ language: 'en-US', ...params })
   const headers = { Accept: 'application/json' }
 
@@ -85,6 +87,7 @@ async function callTmdb(credential, path, params = {}) {
   }
 
   const url = `${TMDB_BASE_URL}${path}?${query.toString()}`
+  context.url = url
 
   for (let attempt = 0; ; attempt += 1) {
     let response
@@ -98,6 +101,8 @@ async function callTmdb(credential, path, params = {}) {
       // as a connectivity problem in the OMDb client.
       throw new TmdbNetworkError(`Could not reach TMDB (${error.message})`)
     }
+
+    context.status = response.status
 
     if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
       const retryAfter = parseInt(response.headers['retry-after'], 10)
@@ -126,6 +131,28 @@ async function callTmdb(credential, path, params = {}) {
     }
 
     return data
+  }
+}
+
+// Single funnel for every TMDB failure, so a throw site added later cannot
+// escape the log. The URL is redacted here for readability; the logger scrubs
+// every line again anyway, which is what covers the v4 read token - that one
+// travels in an Authorization header and never appears in the URL at all.
+async function callTmdb(credential, path, params = {}) {
+  const startedAt = Date.now()
+  const context = {}
+  try {
+    return await callTmdbRaw(credential, path, params, context)
+  } catch (error) {
+    // A file with no TMDB match is routine and there can be hundreds of them
+    // in one scan, so that case is debug rather than warn.
+    const level = error instanceof TmdbNotFoundError ? 'debug' : 'warn'
+    log[level]('tmdb', `${path} failed after ${Date.now() - startedAt} ms`, {
+      url: redactUrl(context.url),
+      status: context.status ?? null,
+      ...describeError(error)
+    })
+    throw error
   }
 }
 

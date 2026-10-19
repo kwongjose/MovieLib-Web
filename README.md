@@ -172,6 +172,7 @@ src/
     db/            SQLite schema and repositories
     importer/      Scanning, filename parsing, TMDB/OMDb clients, ffprobe
     ipc/           IPC handlers, one module per domain
+    log/           Diagnostic log - formatting, redaction, file rotation
     trailerServer.js
   preload/         contextBridge API - an explicit whitelist, no generic invoke
   renderer/src/    Vue 3 app (components, views, Pinia stores)
@@ -179,6 +180,40 @@ src/
 
 The renderer never talks to the filesystem, the database or the network directly.
 Everything goes through the preload bridge, which exposes a fixed list of named channels.
+
+## Diagnostics
+
+When something fails, the reason is written to a log file rather than a console
+nobody can see in a packaged build:
+
+```
+%APPDATA%\My Movie Library\logs\movie-library.log
+```
+
+**Settings → Diagnostics → Reveal Log File** opens it in Explorer, ready to attach
+to a bug report. It is capped at 2 MB, with one previous file kept beside it.
+
+What it records: every failed IPC call with its channel and arguments, every
+failed TMDB or OMDb request with the HTTP status and the redacted URL, every
+database error with its `SQLITE_*` code, and the things the scanner otherwise
+swallows - an unreadable watch folder, a file ffprobe could not read.
+
+**API keys are never written to it.** Keys travel in query strings, so every
+line is scrubbed of `api_key=` / `apikey=` values, `Bearer` tokens and bare
+JWTs on its way to disk - and the arguments of the three channels that carry a
+key (`settings:setTmdbKey`, `settings:testTmdbKey`, `omdbKeys:add`) are never
+logged at all. The file does contain paths from your library.
+
+Verbosity defaults to `info` in a packaged build and `debug` in dev:
+
+```
+set MOVIELIB_LOG=debug      # per-file scan detail, every successful IPC call
+set MOVIELIB_LOG_SQL=1      # every SQL statement - very noisy, dev only
+```
+
+All IPC handlers register through `handle()` in `src/main/ipc/handle.js`, which
+is what guarantees a failure cannot go unlogged. `grep -rn "ipcMain.handle" src/main/ipc/`
+should only ever match that one file.
 
 ## Why Electron 22
 

@@ -1,4 +1,6 @@
 import { net } from 'electron'
+import { log, describeError } from '../log'
+import { redactUrl } from '../log/redact'
 
 const OMDB_BASE_URL = 'https://www.omdbapi.com/'
 
@@ -68,12 +70,14 @@ function mapOmdbResponse(data) {
   }
 }
 
-async function callOmdb(apiKey, params) {
+async function callOmdbRaw(apiKey, params, context) {
   const query = new URLSearchParams({ ...params, plot: 'full', r: 'json', apikey: apiKey })
+  const url = `${OMDB_BASE_URL}?${query.toString()}`
+  context.url = url
 
   let response
   try {
-    response = await requestJson(`${OMDB_BASE_URL}?${query.toString()}`)
+    response = await requestJson(url)
   } catch (error) {
     // DNS failure, no connection, etc. - every remaining lookup would fail
     // identically, so this gets the same "stop the scan" treatment as
@@ -89,6 +93,8 @@ async function callOmdb(apiKey, params) {
   // body - so the body must be inspected before falling back to a generic
   // HTTP-status error, or "invalid key" would look identical to a network
   // failure and never get its own (scan-halting) handling below.
+  context.status = response.status
+
   let data
   try {
     data = JSON.parse(response.body)
@@ -115,6 +121,26 @@ async function callOmdb(apiKey, params) {
   }
 
   return mapOmdbResponse(data)
+}
+
+// Single funnel for every OMDb failure - same rationale as the TMDB client:
+// a throw site added later cannot escape the log.
+async function callOmdb(apiKey, params) {
+  const startedAt = Date.now()
+  const context = {}
+  try {
+    return await callOmdbRaw(apiKey, params, context)
+  } catch (error) {
+    // OMDb holding no entry for a film is routine during a scan, so it is
+    // debug; a spent or rejected key is not, and halts the scan.
+    const level = error instanceof OmdbNotFoundError ? 'debug' : 'warn'
+    log[level]('omdb', `${params.i ? 'fetchByImdbId' : 'fetchByTitle'} failed after ${Date.now() - startedAt} ms`, {
+      url: redactUrl(context.url),
+      status: context.status ?? null,
+      ...describeError(error)
+    })
+    throw error
+  }
 }
 
 export function fetchByTitle(apiKey, title, year) {

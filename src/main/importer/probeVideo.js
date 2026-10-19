@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { log, describeError } from '../log'
 import ffprobeStatic from 'ffprobe-static'
 import ffmpeg from 'fluent-ffmpeg'
 
@@ -11,7 +12,9 @@ import ffmpeg from 'fluent-ffmpeg'
 const ffprobePath = ffprobeStatic.path.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
 
 if (!existsSync(ffprobePath)) {
-  console.error(`[probe] ffprobe binary missing at ${ffprobePath} - resolutions will not be detected`)
+  // Module-evaluation time, which is before initLog runs - the log module
+  // buffers this and replays it once there is a file to write to.
+  log.error('probe', `ffprobe binary missing at ${ffprobePath} - resolutions will not be detected`)
 }
 
 ffmpeg.setFfprobePath(ffprobePath)
@@ -25,14 +28,14 @@ export function probeResolution(filePath) {
 
     ffmpeg.ffprobe(filePath, (error, data) => {
       if (error) {
-        console.warn(`[probe] failed for ${filePath}: ${error.message}`)
+        log.warn('probe', `failed for ${filePath}`, describeError(error))
         resolve(unknown)
         return
       }
 
       const videoStream = data.streams?.find((s) => s.codec_type === 'video')
       if (!videoStream?.width || !videoStream?.height) {
-        console.warn(`[probe] no video stream with dimensions in ${filePath}`)
+        log.warn('probe', `no video stream with dimensions in ${filePath}`)
         resolve(unknown)
         return
       }
