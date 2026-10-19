@@ -13,6 +13,7 @@ import { TmdbNotFoundError } from '../importer/tmdbClient'
 import { isScanning } from './scan'
 import { backfillRatings } from '../importer/backfillRatings'
 import { probeResolution } from '../importer/probeVideo'
+import { log, describeError } from '../log'
 import { auditMovies } from '../importer/matchAudit'
 
 function requireTmdbKey(db) {
@@ -29,15 +30,30 @@ function requireTmdbKey(db) {
 async function ratingFromOmdb(db, imdbId) {
   if (!imdbId) return null
 
-  for (const key of listKeyValues(db)) {
+  const keys = listKeyValues(db)
+  // Unlike a scan, this path has no progress overlay to report through, so a
+  // refetch with no key looks exactly like a refetch that worked - TMDB fields
+  // update and the IMDb rating silently does not. One line, user-initiated, so
+  // warn rather than debug.
+  if (!keys.length) {
+    log.warn('omdb', 'no OMDb API key configured - IMDb rating left unchanged')
+    return null
+  }
+
+  for (const key of keys) {
     try {
       return await fetchByImdbId(key, imdbId)
     } catch (error) {
       // Try the next key for a spent or rejected one; anything else (not found,
       // network) means OMDb has nothing useful to add for this film.
-      if (!(error instanceof OmdbRateLimitError) && !(error instanceof OmdbAuthError)) return null
+      if (!(error instanceof OmdbRateLimitError) && !(error instanceof OmdbAuthError)) {
+        log.debug('omdb', 'no rating available - IMDb rating left unchanged', describeError(error))
+        return null
+      }
     }
   }
+
+  log.warn('omdb', 'every OMDb key is spent or rejected - IMDb rating left unchanged')
   return null
 }
 

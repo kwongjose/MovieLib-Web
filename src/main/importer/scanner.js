@@ -108,7 +108,14 @@ export async function findNewFiles() {
 async function lookupOmdb(pool, movie, failures) {
   for (;;) {
     const key = pool.current()
-    if (!key) return null
+    if (!key) {
+      // The quiet path that makes a rating simply never appear: with no usable
+      // key this returns null and the film imports with everything except its
+      // IMDb score. Debug rather than warn because it fires once per file -
+      // the scan-level warning below is the one that gets noticed.
+      log.debug('omdb', `no usable OMDb key - importing ${movie.title} without a rating`)
+      return null
+    }
 
     try {
       return movie.imdb_id
@@ -168,6 +175,14 @@ export async function runScan(onProgress) {
     folders: folders.length,
     omdbKeys: pool.total()
   })
+
+  // Stated once, loudly, because it is silent everywhere else: the scan will
+  // succeed, TMDB metadata will be written, and every film will simply have no
+  // IMDb rating. That combination reads as "the rating update failed" with
+  // nothing anywhere saying why.
+  if (!pool.total()) {
+    log.warn('scan', 'no OMDb API key configured - films will import with no IMDb rating')
+  }
 
   let processed = 0
   let imported = 0
