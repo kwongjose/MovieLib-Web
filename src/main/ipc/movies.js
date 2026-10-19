@@ -42,12 +42,22 @@ async function ratingFromOmdb(db, imdbId) {
 
   for (const key of keys) {
     try {
-      return await fetchByImdbId(key, imdbId)
+      const data = await fetchByImdbId(key, imdbId)
+      // OMDb answered, but holds no score for this film ("N/A"). Worth a line
+      // of its own: it is the one case that does not leave the rating alone -
+      // mergeOmdbFallbacks turns it into an explicit null, which clears any
+      // rating already stored.
+      if (data.imdb_rating == null) {
+        log.warn('omdb', `OMDb has no IMDb score for ${imdbId} - any stored rating will be cleared`)
+      }
+      return data
     } catch (error) {
       // Try the next key for a spent or rejected one; anything else (not found,
-      // network) means OMDb has nothing useful to add for this film.
+      // network) means OMDb has nothing useful to add for this film. Warn, not
+      // debug: this is one user-initiated refetch, not a 900-file scan, and
+      // without it the rating simply does not move and nothing says why.
       if (!(error instanceof OmdbRateLimitError) && !(error instanceof OmdbAuthError)) {
-        log.debug('omdb', 'no rating available - IMDb rating left unchanged', describeError(error))
+        log.warn('omdb', `no rating for ${imdbId} - IMDb rating left unchanged`, describeError(error))
         return null
       }
     }
