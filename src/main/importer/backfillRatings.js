@@ -3,6 +3,7 @@ import { listMoviesMissingRating, updateImdbRating } from '../db/movies.repo'
 import { listKeyValues } from '../db/omdbKeys.repo'
 import { createKeyPool } from './keyPool'
 import { fetchByTitle, fetchByImdbId, OmdbRateLimitError, OmdbAuthError } from './omdbClient'
+import { log } from '../log'
 
 // A scan imports films whether or not OMDb could supply a rating, because TMDB
 // is the metadata source and OMDb only contributes that one number. The catch is
@@ -57,6 +58,14 @@ export async function backfillRatings(onProgress) {
   const pending = listMoviesMissingRating(db)
   const total = pending.length
 
+  // "Missing" means imdb_rating IS NULL. A run that reports 0 of 0 means every
+  // row already holds a rating, which is a different problem from a run that
+  // tried and came back empty-handed - worth being able to tell apart.
+  log.info('omdb', `backfill started: ${total} film(s) with no IMDb rating`, {
+    keys: keys.length,
+    withoutImdbId: pending.filter((m) => !m.imdb_id).length
+  })
+
   let processed = 0
   let filled = 0
   let unavailable = 0
@@ -76,9 +85,21 @@ export async function backfillRatings(onProgress) {
     for (const { movie, result } of results) {
       if (result.status === 'ok') {
         updateImdbRating(db, movie.id, result.rating)
+        log.debug('omdb', `${movie.title}: stored IMDb ${result.rating}`)
         filled += 1
       } else if (result.status === 'unavailable') {
+        // OMDb has the film, with no score. Nothing to store, and a re-run
+        // will revisit it and come back with the same answer.
+        log.warn('omdb', `${movie.title}: OMDb holds no IMDb score`, { imdbId: movie.imdb_id ?? null })
         unavailable += 1
+      } else if (result.status === 'not-found') {
+        // Either OMDb has no entry, or - with no IMDb id to go on - the
+        // title+year search did not match one.
+        log.warn('omdb', `${movie.title}: no OMDb match`, {
+          year: movie.year ?? null,
+          imdbId: movie.imdb_id ?? null,
+          searchedBy: movie.imdb_id ? 'imdbId' : 'title+year'
+        })
       } else if (result.status === 'no-keys') {
         // Every remaining film would fail identically - stop cleanly and report
         // how many are left rather than grinding through them.
@@ -91,7 +112,7 @@ export async function backfillRatings(onProgress) {
   }
 
   const reasons = [...keyFailures.values()]
-  return {
+  const summary = {
     total,
     filled,
     unavailable,
@@ -100,4 +121,7 @@ export async function backfillRatings(onProgress) {
     keysRateLimited: reasons.filter((r) => r === 'rate-limit').length,
     keysInvalid: reasons.filter((r) => r === 'invalid').length
   }
+
+  log.info('omdb', 'backfill finished', summary)
+  return summary
 }

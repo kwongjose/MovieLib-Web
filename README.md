@@ -187,8 +187,13 @@ When something fails, the reason is written to a log file rather than a console
 nobody can see in a packaged build:
 
 ```
-%APPDATA%\My Movie Library\logs\movie-library.log
+%APPDATA%\movielib-web\logs\movie-library.log
 ```
+
+The folder is the package name, not the product name, so a packaged build and
+`npm run dev` share it - and share the database beside it. The first line of
+the log is a banner recording its own path, which is the authoritative answer
+if that ever changes.
 
 **Settings → Diagnostics → Reveal Log File** opens it in Explorer, ready to attach
 to a bug report. It is capped at 2 MB, with one previous file kept beside it.

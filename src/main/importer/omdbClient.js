@@ -123,18 +123,42 @@ async function callOmdbRaw(apiKey, params, context) {
   return mapOmdbResponse(data)
 }
 
-// Single funnel for every OMDb failure - same rationale as the TMDB client:
-// a throw site added later cannot escape the log.
+// Every OMDb call reports its outcome here - success, no score, or failure.
+// All three callers (scan, backfill, single-film refetch) go through this, so
+// this is the one place that can answer "did we ask, and what came back".
+//
+// Successes are logged too, at info: when a rating is missing from the library
+// but the log says the call returned one, the problem is on the write side,
+// not the fetch side. That distinction is otherwise invisible.
 async function callOmdb(apiKey, params) {
   const startedAt = Date.now()
   const context = {}
+  const label = params.i
+    ? `imdbId ${params.i}`
+    : `title "${params.t}"${params.y ? ` (${params.y})` : ''}`
+
   try {
-    return await callOmdbRaw(apiKey, params, context)
+    const data = await callOmdbRaw(apiKey, params, context)
+    const elapsed = Date.now() - startedAt
+
+    // OMDb answered, and holds the film, but has no score for it ("N/A").
+    // A real answer rather than an error, and the single most confusing
+    // outcome: the call succeeded and the rating still did not move.
+    if (data.imdb_rating == null) {
+      log.warn('omdb', `${label} -> no IMDb score in OMDb's record after ${elapsed} ms`, {
+        url: redactUrl(context.url),
+        status: context.status ?? null,
+        title: data.title ?? null
+      })
+    } else {
+      log.info('omdb', `${label} -> IMDb ${data.imdb_rating} after ${elapsed} ms`)
+    }
+    return data
   } catch (error) {
-    // OMDb holding no entry for a film is routine during a scan, so it is
-    // debug; a spent or rejected key is not, and halts the scan.
-    const level = error instanceof OmdbNotFoundError ? 'debug' : 'warn'
-    log[level]('omdb', `${params.i ? 'fetchByImdbId' : 'fetchByTitle'} failed after ${Date.now() - startedAt} ms`, {
+    // Warn for every failure including "not found". A scan can produce a lot
+    // of these, but a rating that never arrives is exactly what is being
+    // chased, and the aggregate is the point.
+    log.warn('omdb', `${label} failed after ${Date.now() - startedAt} ms`, {
       url: redactUrl(context.url),
       status: context.status ?? null,
       ...describeError(error)
